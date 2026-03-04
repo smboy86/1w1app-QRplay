@@ -6,14 +6,12 @@
     "orientation": "landscape",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.smboy86.qrplay"
+      "bundleIdentifier": "com.smboy86.qrplay",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "permissions": [
@@ -26,9 +24,19 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "icon": "./assets/icon.png",
+      "predictiveBackGestureEnabled": false,
+      "package": "com.smboy86.qrplay"
     },
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#E6F4FE",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220
+        }
+      ],
       [
         "expo-camera",
         {
@@ -40,6 +48,11 @@
     ],
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "4ab16a78-ffe1-469c-b34c-1cc8c717bd46"
+      }
     }
   }
 }
