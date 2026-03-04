@@ -382,9 +382,12 @@ export default function App() {
             setScannerFacing((value) => (value === "back" ? "front" : "back"))
           }
         >
-          <Text style={styles.cameraFacingButtonText}>
-            {scannerFacing === "back" ? "전면 카메라" : "후면 카메라"}
-          </Text>
+          <View style={styles.cameraFacingButtonInner}>
+            <Text style={styles.cameraFacingButtonIcon}>⟳</Text>
+            <Text style={styles.cameraFacingButtonText}>
+              {scannerFacing === "back" ? "전면 카메라" : "후면 카메라"}
+            </Text>
+          </View>
         </Pressable>
 
         <View style={styles.scannerHint}>
@@ -598,6 +601,16 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.62)",
     paddingHorizontal: 12,
     paddingVertical: 10,
+  },
+  cameraFacingButtonInner: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  cameraFacingButtonIcon: {
+    marginRight: 6,
+    color: "#FFFFFF",
+    fontSize: 30,
+    fontWeight: "700",
   },
   cameraFacingButtonText: {
     color: "#FFFFFF",
