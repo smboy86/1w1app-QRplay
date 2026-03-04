@@ -87,6 +87,7 @@ function getIntentFallbackUrl(raw: string): string | null {
 export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
   const [mode, setMode] = useState<Mode>("scanner");
+  const [scannerFacing, setScannerFacing] = useState<"back" | "front">("front");
   const [videoId, setVideoId] = useState<string | null>(null);
   const [playerUiState, setPlayerUiState] = useState<PlayerUiState>("idle");
   const [isLoadingOverlayVisible, setIsLoadingOverlayVisible] = useState(false);
@@ -367,10 +368,24 @@ export default function App() {
       <SafeAreaView style={styles.container}>
         <CameraView
           style={StyleSheet.absoluteFill}
-          facing="back"
+          facing={scannerFacing}
           barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
           onBarcodeScanned={handleBarcodeScanned}
         />
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.cameraFacingButton,
+            pressed && styles.pressedButton,
+          ]}
+          onPress={() =>
+            setScannerFacing((value) => (value === "back" ? "front" : "back"))
+          }
+        >
+          <Text style={styles.cameraFacingButtonText}>
+            {scannerFacing === "back" ? "전면 카메라" : "후면 카메라"}
+          </Text>
+        </Pressable>
 
         <View style={styles.scannerHint}>
           <Text style={styles.scannerTitle}>QR을 비춰 주세요</Text>
@@ -574,6 +589,20 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: "rgba(0, 0, 0, 0.62)",
     padding: 16,
+  },
+  cameraFacingButton: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    borderRadius: 10,
+    backgroundColor: "rgba(0, 0, 0, 0.62)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  cameraFacingButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
   },
   scannerTitle: {
     color: "#FFFFFF",
