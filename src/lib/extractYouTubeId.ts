@@ -56,8 +56,6 @@ export function extractYouTubeId(input: string): ExtractResult {
   const host = normalizeHost(url.hostname);
 
   if (host === "youtu.be") {
-    if (url.searchParams.has("list")) return nonSingleVideo();
-
     const parts = url.pathname.split("/").filter(Boolean);
     if (parts.length !== 1) return nonSingleVideo();
 
@@ -70,8 +68,6 @@ export function extractYouTubeId(input: string): ExtractResult {
   if (!YOUTUBE_HOST_RE.test(host)) {
     return { ok: false, reason: "NOT_YOUTUBE" };
   }
-
-  if (url.searchParams.has("list")) return nonSingleVideo();
 
   const pathname = url.pathname.replace(/\/+$/, "");
   const parts = pathname.split("/").filter(Boolean);

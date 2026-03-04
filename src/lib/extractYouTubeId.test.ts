@@ -42,10 +42,17 @@ describe("extractYouTubeId", () => {
     });
   });
 
-  it("rejects playlist url", () => {
+  it("accepts watch url even when playlist params are present", () => {
     expect(
       extractYouTubeId("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL1234567890")
     ).toEqual({
+      ok: true,
+      videoId: "dQw4w9WgXcQ",
+    });
+  });
+
+  it("rejects playlist page url", () => {
+    expect(extractYouTubeId("https://www.youtube.com/playlist?list=PL1234567890")).toEqual({
       ok: false,
       reason: "NOT_SINGLE_VIDEO",
     });

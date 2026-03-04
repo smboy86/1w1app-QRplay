@@ -1,11 +1,37 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
-import { CameraView, type BarcodeScanningResult, useCameraPermissions } from "expo-camera";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  Alert,
+  Button,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import {
+  CameraView,
+  type BarcodeScanningResult,
+  useCameraPermissions,
+} from "expo-camera";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
 import { buildYoutubeHtml } from "./src/lib/buildYoutubeHtml";
-import { extractYouTubeId, mapExtractReasonToMessage } from "./src/lib/extractYouTubeId";
-import { mapYouTubeError, NETWORK_ERROR_MESSAGE } from "./src/lib/mapYouTubeError";
+import {
+  extractYouTubeId,
+  mapExtractReasonToMessage,
+} from "./src/lib/extractYouTubeId";
+import {
+  mapYouTubeError,
+  NETWORK_ERROR_MESSAGE,
+} from "./src/lib/mapYouTubeError";
+import { resolveRedirectUrl } from "./src/lib/resolveRedirectUrl";
 import type { BridgeMessage, Mode, PlayerUiState } from "./src/lib/types";
 
 const APP_ORIGIN = "https://qrplay.app.local";
@@ -46,7 +72,7 @@ export default function App() {
         onDismiss: close,
       });
     },
-    []
+    [],
   );
 
   const resetToScanner = useCallback((keepScanLocked = false) => {
@@ -60,13 +86,14 @@ export default function App() {
   const handlePlaybackFailure = useCallback(
     (message: string) => {
       if (mode !== "player") return;
+      console.log("[PLAYER] playback failure:", message);
       setPlayerUiState("error");
       resetToScanner(true);
       showBlockingAlert("재생 오류", message, () => {
         scanLockedRef.current = false;
       });
     },
-    [mode, resetToScanner, showBlockingAlert]
+    [mode, resetToScanner, showBlockingAlert],
   );
 
   useEffect(() => {
@@ -79,16 +106,37 @@ export default function App() {
     return () => clearTimeout(timeout);
   }, [handlePlaybackFailure, mode, playerUiState]);
 
-  const handleBarcodeScanned = ({ data }: BarcodeScanningResult) => {
+  const handleBarcodeScanned = async ({ data }: BarcodeScanningResult) => {
     if (scanLockedRef.current || alertVisibleRef.current) return;
     scanLockedRef.current = true;
+    console.log("[QR] scanned data:", data);
 
-    const result = extractYouTubeId(data);
+    let result = extractYouTubeId(data);
+
+    if (!result.ok && result.reason === "NOT_YOUTUBE") {
+      const redirectResult = await resolveRedirectUrl(data);
+
+      if (!redirectResult.ok && redirectResult.reason === "NETWORK") {
+        showBlockingAlert("네트워크 오류", NETWORK_ERROR_MESSAGE, () => {
+          scanLockedRef.current = false;
+        });
+        return;
+      }
+
+      if (redirectResult.ok) {
+        console.log("[QR] resolved redirect URL:", redirectResult.url);
+        result = extractYouTubeId(redirectResult.url);
+      }
+    }
 
     if (!result.ok) {
-      showBlockingAlert("지원하지 않는 QR", mapExtractReasonToMessage(result.reason), () => {
-        scanLockedRef.current = false;
-      });
+      showBlockingAlert(
+        "지원하지 않는 QR",
+        mapExtractReasonToMessage(result.reason),
+        () => {
+          scanLockedRef.current = false;
+        },
+      );
       return;
     }
 
@@ -106,8 +154,13 @@ export default function App() {
       return;
     }
 
+    console.log("[PLAYER] message:", message.type, message.payload ?? null);
+
     switch (message.type) {
       case "ready":
+        // Some environments block autoplay without emitting autoplayBlocked.
+        // Move out of loading so users can press play manually.
+        setPlayerUiState((state) => (state === "loading" ? "paused" : state));
         return;
       case "playing":
         setPlayerUiState("playing");
@@ -130,7 +183,9 @@ export default function App() {
     }
   };
 
-  const sendPlayerCommand = (fnName: "__YT_PLAY__" | "__YT_PAUSE__" | "__YT_STOP__") => {
+  const sendPlayerCommand = (
+    fnName: "__YT_PLAY__" | "__YT_PAUSE__" | "__YT_STOP__",
+  ) => {
     webViewRef.current?.injectJavaScript(`
       if (window.${fnName}) {
         window.${fnName}();
@@ -166,9 +221,10 @@ export default function App() {
         />
 
         <View style={styles.scannerHint}>
-          <Text style={styles.scannerTitle}>QR을 비춰 주세요</Text>
+          <Text style={styles.scannerTitle}>QR을 비춰 주세요 2222</Text>
           <Text style={styles.scannerDescription}>
-            한 번에 하나의 영상만 재생하며, 종료되면 자동으로 스캔 화면으로 돌아옵니다.
+            한 번에 하나의 영상만 재생하며, 종료되면 자동으로 스캔 화면으로
+            돌아옵니다.
           </Text>
         </View>
       </SafeAreaView>
@@ -234,7 +290,10 @@ export default function App() {
         </Pressable>
 
         <Pressable
-          style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressedButton]}
+          style={({ pressed }) => [
+            styles.secondaryButton,
+            pressed && styles.pressedButton,
+          ]}
           onPress={() => {
             sendPlayerCommand("__YT_STOP__");
             resetToScanner();
