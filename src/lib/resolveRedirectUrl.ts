@@ -2,7 +2,6 @@ const REQUEST_TIMEOUT_MS = 6000;
 const MAX_MANUAL_REDIRECT_HOPS = 5;
 
 type RedirectResolveErrorReason = "NOT_URL" | "UNSUPPORTED_PROTOCOL" | "NETWORK";
-
 export type RedirectResolveResult =
   | { ok: true; url: string; redirected: boolean }
   | { ok: false; reason: RedirectResolveErrorReason };
@@ -14,6 +13,10 @@ function isHttpUrl(raw: string): boolean {
   } catch {
     return false;
   }
+}
+
+function normalizeHost(hostname: string): string {
+  return hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
 }
 
 async function fetchWithTimeout(
@@ -45,23 +48,78 @@ function buildResolveCandidates(url: URL): string[] {
   return [httpsUrl.toString(), url.toString()];
 }
 
-type ProbeResult = { url: string; redirected: boolean };
+function selectFallback(current: string | null, next: string): string {
+  if (!current) return next;
+  if (current === next) return current;
 
-async function tryResolveWithFollow(input: string, method: "HEAD" | "GET"): Promise<ProbeResult> {
-  const response = await fetchWithTimeout(input, method, "follow");
-  const resolvedUrl = isHttpUrl(response.url) ? response.url : input;
-  return { url: resolvedUrl, redirected: resolvedUrl !== input };
+  const currentProtocol = (() => {
+    try {
+      return new URL(current).protocol;
+    } catch {
+      return "";
+    }
+  })();
+
+  const nextProtocol = (() => {
+    try {
+      return new URL(next).protocol;
+    } catch {
+      return "";
+    }
+  })();
+
+  if (currentProtocol === "http:" && nextProtocol === "https:") {
+    return next;
+  }
+
+  return current;
 }
 
-async function tryResolveWithManual(input: string, method: "HEAD" | "GET"): Promise<ProbeResult | null> {
+function getLocationHeader(
+  headers: Pick<Headers, "get"> | undefined,
+): string | null {
+  if (!headers?.get) return null;
+  return headers.get("location") ?? headers.get("Location");
+}
+
+async function tryResolveWithFollow(
+  input: string,
+  method: "HEAD" | "GET",
+): Promise<string | null> {
+  const response = await fetchWithTimeout(input, method, "follow");
+
+  const location = getLocationHeader(response.headers);
+  if (location) {
+    try {
+      const redirected = new URL(location, input).toString();
+      if (isHttpUrl(redirected)) return redirected;
+    } catch {
+      // Fall through to response.url.
+    }
+  }
+
+  if (isHttpUrl(response.url)) {
+    return response.url;
+  }
+
+  return null;
+}
+
+async function tryResolveWithManual(
+  input: string,
+  method: "HEAD" | "GET",
+): Promise<string | null> {
   let current = input;
 
   for (let hop = 0; hop < MAX_MANUAL_REDIRECT_HOPS; hop += 1) {
     const response = await fetchWithTimeout(current, method, "manual");
-    const location = response.headers.get("location");
+    const location = getLocationHeader(response.headers);
 
     if (!location) {
-      return { url: current, redirected: current !== input };
+      if (isHttpUrl(response.url) && response.url !== current) {
+        current = response.url;
+      }
+      return current;
     }
 
     let nextUrl: URL;
@@ -77,15 +135,155 @@ async function tryResolveWithManual(input: string, method: "HEAD" | "GET"): Prom
     }
 
     if (next === current) {
-      return { url: current, redirected: current !== input };
+      return current;
     }
 
     current = next;
   }
 
-  return { url: current, redirected: current !== input };
+  return current;
 }
 
+async function tryResolveWithXmlHttpRequest(
+  input: string,
+  method: "HEAD" | "GET",
+): Promise<string | null> {
+  if (typeof XMLHttpRequest !== "function") {
+    return null;
+  }
+
+  return await new Promise<string>((resolve, reject) => {
+    let settled = false;
+
+    const onResolve = (value: string) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+
+    const onReject = () => {
+      if (settled) return;
+      settled = true;
+      reject(new Error("XHR_FAILED"));
+    };
+
+    const xhr = new XMLHttpRequest();
+    xhr.timeout = REQUEST_TIMEOUT_MS;
+    xhr.open(method, input, true);
+
+    xhr.onload = () => {
+      const location = xhr.getResponseHeader("location") ?? xhr.getResponseHeader("Location");
+      if (location) {
+        try {
+          const nextUrl = new URL(location, input).toString();
+          if (isHttpUrl(nextUrl)) {
+            onResolve(nextUrl);
+            return;
+          }
+        } catch {
+          // Fall through to responseURL.
+        }
+      }
+
+      if (isHttpUrl(xhr.responseURL)) {
+        onResolve(xhr.responseURL);
+        return;
+      }
+
+      onResolve(input);
+    };
+    xhr.onerror = onReject;
+    xhr.ontimeout = onReject;
+    xhr.onabort = onReject;
+
+    try {
+      xhr.send();
+    } catch {
+      onReject();
+    }
+  });
+}
+
+export async function resolveFinalUrl(shortUrl: string): Promise<string | null> {
+  const raw = shortUrl.trim();
+  if (!raw) return null;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return null;
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return null;
+  }
+
+  const sourceHost = normalizeHost(parsed.hostname);
+  const candidates = buildResolveCandidates(parsed);
+  let fallbackUrl: string | null = null;
+  let bestSameHostRedirect: string | null = null;
+
+  const evaluateResolvedUrl = (
+    resolvedUrl: string,
+    candidate: string,
+  ): string | null => {
+    if (resolvedUrl === candidate) {
+      fallbackUrl = selectFallback(fallbackUrl, resolvedUrl);
+      return null;
+    }
+
+    try {
+      const resolvedHost = normalizeHost(new URL(resolvedUrl).hostname);
+      if (resolvedHost !== sourceHost) {
+        return resolvedUrl;
+      }
+    } catch {
+      // Ignore malformed resolved urls.
+    }
+
+    bestSameHostRedirect = selectFallback(bestSameHostRedirect, resolvedUrl);
+    return null;
+  };
+
+  for (const candidate of candidates) {
+    for (const method of ["HEAD", "GET"] as const) {
+      try {
+        const followUrl = await tryResolveWithFollow(candidate, method);
+        if (followUrl) {
+          const finalUrl = evaluateResolvedUrl(followUrl, candidate);
+          if (finalUrl) return finalUrl;
+        }
+      } catch {
+        // Try manual strategy.
+      }
+
+      try {
+        const manualUrl = await tryResolveWithManual(candidate, method);
+        if (manualUrl) {
+          const finalUrl = evaluateResolvedUrl(manualUrl, candidate);
+          if (finalUrl) return finalUrl;
+        }
+      } catch {
+        // Try XHR strategy.
+      }
+
+      try {
+        const xhrUrl = await tryResolveWithXmlHttpRequest(candidate, method);
+        if (xhrUrl) {
+          const finalUrl = evaluateResolvedUrl(xhrUrl, candidate);
+          if (finalUrl) return finalUrl;
+        }
+      } catch {
+        // Try the next method/candidate.
+      }
+    }
+  }
+
+  return bestSameHostRedirect ?? fallbackUrl;
+}
+
+// Backward-compatible wrapper kept for existing callers/tests.
 export async function resolveRedirectUrl(input: string): Promise<RedirectResolveResult> {
   const raw = input.trim();
 
@@ -102,46 +300,10 @@ export async function resolveRedirectUrl(input: string): Promise<RedirectResolve
     return { ok: false, reason: "UNSUPPORTED_PROTOCOL" };
   }
 
-  const candidates = buildResolveCandidates(parsed);
-  let fallbackUrl: string | null = null;
-
-  for (const candidate of candidates) {
-    for (const method of ["HEAD", "GET"] as const) {
-      try {
-        const followResult = await tryResolveWithFollow(candidate, method);
-        if (followResult.redirected) {
-          return {
-            ok: true,
-            url: followResult.url,
-            redirected: followResult.url !== raw,
-          };
-        }
-        fallbackUrl = followResult.url;
-      } catch {
-        // Try manual strategy.
-      }
-
-      try {
-        const manualResult = await tryResolveWithManual(candidate, method);
-        if (manualResult?.redirected) {
-          return {
-            ok: true,
-            url: manualResult.url,
-            redirected: manualResult.url !== raw,
-          };
-        }
-        if (manualResult) {
-          fallbackUrl = manualResult.url;
-        }
-      } catch {
-        // Try the next method/candidate.
-      }
-    }
+  const url = await resolveFinalUrl(raw);
+  if (!url) {
+    return { ok: false, reason: "NETWORK" };
   }
 
-  if (fallbackUrl) {
-    return { ok: true, url: fallbackUrl, redirected: fallbackUrl !== raw };
-  }
-
-  return { ok: false, reason: "NETWORK" };
+  return { ok: true, url, redirected: url !== raw };
 }

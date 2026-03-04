@@ -41,6 +41,7 @@ export function buildYoutubeHtml(videoId: string, appOrigin: string, autoplay = 
     <div id="player"></div>
     <script>
       var player = null;
+      var pausedByApp = false;
 
       function send(type, payload) {
         if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
@@ -58,9 +59,31 @@ export function buildYoutubeHtml(videoId: string, appOrigin: string, autoplay = 
           playerVars: ${JSON.stringify(playerVars)},
           events: {
             onReady: function(event) {
-              window.__YT_PLAY__ = function() { if (player) player.playVideo(); };
-              window.__YT_PAUSE__ = function() { if (player) player.pauseVideo(); };
-              window.__YT_STOP__ = function() { if (player) player.stopVideo(); };
+              window.__YT_PLAY__ = function() {
+                if (!player) return;
+                pausedByApp = false;
+                player.playVideo();
+              };
+              window.__YT_PAUSE__ = function() {
+                if (!player) return;
+
+                var currentTime = 0;
+                if (typeof player.getCurrentTime === "function") {
+                  currentTime = player.getCurrentTime() || 0;
+                }
+
+                pausedByApp = true;
+                player.cueVideoById({
+                  videoId: ${JSON.stringify(videoId)},
+                  startSeconds: currentTime,
+                });
+                send("paused");
+              };
+              window.__YT_STOP__ = function() {
+                if (!player) return;
+                pausedByApp = false;
+                player.stopVideo();
+              };
               window.__YT_DESTROY__ = function() { if (player) player.destroy(); };
 
               send("ready");
@@ -71,7 +94,7 @@ export function buildYoutubeHtml(videoId: string, appOrigin: string, autoplay = 
               send("state", { state: event.data });
 
               if (event.data === YT.PlayerState.PLAYING) send("playing");
-              if (event.data === YT.PlayerState.PAUSED) send("paused");
+              if (event.data === YT.PlayerState.PAUSED && !pausedByApp) send("paused");
               if (event.data === YT.PlayerState.ENDED) send("ended");
               if (event.data === YT.PlayerState.BUFFERING) send("buffering");
               if (event.data === YT.PlayerState.CUED) send("cued");
