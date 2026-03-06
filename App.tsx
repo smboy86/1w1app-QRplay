@@ -612,7 +612,7 @@ const styles = StyleSheet.create({
   cameraFacingButton: {
     position: "absolute",
     top: 16,
-    right: 16,
+    left: 16,
     borderRadius: 10,
     backgroundColor: "rgba(0, 0, 0, 0.62)",
     paddingHorizontal: 12,
