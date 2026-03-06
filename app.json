@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.smboy86.qrplay",
+      "bundleIdentifier": "com.naldaworks.qrplay",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -26,7 +26,7 @@
       },
       "icon": "./assets/icon.png",
       "predictiveBackGestureEnabled": false,
-      "package": "com.smboy86.qrplay"
+      "package": "com.naldaworks.qrplay"
     },
     "plugins": [
       [
