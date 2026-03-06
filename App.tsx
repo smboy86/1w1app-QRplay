@@ -21,6 +21,7 @@ import {
   type BarcodeScanningResult,
   useCameraPermissions,
 } from "expo-camera";
+import * as SplashScreen from "expo-splash-screen";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
 import { buildYoutubeHtml } from "./src/lib/buildYoutubeHtml";
@@ -36,10 +37,15 @@ import { resolveFinalUrl } from "./src/lib/resolveRedirectUrl";
 import type { BridgeMessage, Mode, PlayerUiState } from "./src/lib/types";
 
 const APP_ORIGIN = "https://qrplay.app.local";
+const INITIAL_SPLASH_DELAY_MS = 3000;
 const PLAYER_READY_TIMEOUT_MS = 15000;
 const REDIRECT_WEBVIEW_TIMEOUT_MS = 9000;
 // "player": block only WebView area, "app": block entire app while video is playing.
 const PLAYBACK_TOUCH_BLOCK_SCOPE: "player" | "app" = "player";
+
+void SplashScreen.preventAutoHideAsync().catch(() => {
+  // Ignore duplicate prevention requests during fast refresh.
+});
 
 function normalizeScannedInput(input: string): string {
   const trimmed = input.trim();
@@ -204,6 +210,16 @@ export default function App() {
     },
     [redirectProbe, settleRedirectProbe],
   );
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      void SplashScreen.hideAsync().catch(() => {
+        // Ignore hide errors when the splash screen is already dismissed.
+      });
+    }, INITIAL_SPLASH_DELAY_MS);
+
+    return () => clearTimeout(timeout);
+  }, []);
 
   useEffect(() => {
     return () => {
