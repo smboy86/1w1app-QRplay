@@ -1,9 +1,35 @@
 import { NativeTabs } from "expo-router/unstable-native-tabs";
 
+const tabBarBackgroundColor = "#050505";
+const tabBarDefaultColor = "#F8FAFC";
+const tabBarActiveColor = "#FACC15";
+const tabBarIndicatorColor = "#3F3300";
+
 // Renders the three-tab native navigation used by the app.
 export default function TabLayout() {
   return (
-    <NativeTabs tintColor="#2563EB">
+    <NativeTabs
+      backgroundColor={tabBarBackgroundColor}
+      tintColor={tabBarActiveColor}
+      iconColor={{
+        default: tabBarDefaultColor,
+        selected: tabBarActiveColor,
+      }}
+      labelStyle={{
+        default: {
+          color: tabBarDefaultColor,
+          fontSize: 12,
+          fontWeight: "600",
+        },
+        selected: {
+          color: tabBarActiveColor,
+          fontSize: 12,
+          fontWeight: "700",
+        },
+      }}
+      indicatorColor={tabBarIndicatorColor}
+      rippleColor="rgba(250, 204, 21, 0.16)"
+    >
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Icon
           sf="qrcode.viewfinder"

@@ -46,7 +46,8 @@
           "barcodeScannerEnabled": true
         }
       ],
-      "expo-router"
+      "expo-router",
+      "./plugins/with-android16-orientation-compat"
     ],
     "web": {
       "favicon": "./assets/favicon.png"
