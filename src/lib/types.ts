@@ -16,3 +16,20 @@ export type ExtractErrorReason = "NOT_YOUTUBE" | "NOT_SINGLE_VIDEO" | "INVALID_I
 export type ExtractResult =
   | { ok: true; videoId: string }
   | { ok: false; reason: ExtractErrorReason };
+
+export type HistoryStatus = "success" | "failure";
+
+export type PlaybackHistoryEntry = {
+  id: string;
+  sourceUrl: string;
+  resolvedUrl: string | null;
+  lastStatus: HistoryStatus;
+  playCount: number;
+  updatedAt: number;
+};
+
+export type ReplayRequest = {
+  requestId: string;
+  historyId: string;
+  sourceUrl: string;
+};

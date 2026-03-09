@@ -24,6 +24,7 @@ import {
 import * as SplashScreen from "expo-splash-screen";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
+import { usePlaybackHistory } from "./src/features/playback-history/playback-history-context";
 import { buildYoutubeHtml } from "./src/lib/buildYoutubeHtml";
 import {
   extractYouTubeId,
@@ -42,6 +43,22 @@ const PLAYER_READY_TIMEOUT_MS = 15000;
 const REDIRECT_WEBVIEW_TIMEOUT_MS = 9000;
 // "player": block only WebView area, "app": block entire app while video is playing.
 const PLAYBACK_TOUCH_BLOCK_SCOPE: "player" | "app" = "player";
+
+type ResolvedPlaybackInputResult =
+  | { ok: true; sourceUrl: string; finalUrl: string; videoId: string }
+  | {
+      ok: false;
+      sourceUrl: string;
+      finalUrl: string | null;
+      title: string;
+      message: string;
+    };
+
+type ActivePlaybackHistory = {
+  historyId: string;
+  sourceUrl: string;
+  resolvedUrl: string | null;
+};
 
 void SplashScreen.preventAutoHideAsync().catch(() => {
   // Ignore duplicate prevention requests during fast refresh.
@@ -90,7 +107,68 @@ function getIntentFallbackUrl(raw: string): string | null {
   }
 }
 
-export default function App() {
+// Resolves scanned or replayed input into a playable YouTube video session.
+async function resolvePlaybackInput(
+  input: string,
+  startRedirectProbe: (sourceUrl: string) => Promise<string | null>,
+): Promise<ResolvedPlaybackInputResult> {
+  const sourceUrl = normalizeScannedInput(input);
+  let finalUrl: string | null = isHttpSchemeUrl(sourceUrl) ? sourceUrl : null;
+  let result = extractYouTubeId(sourceUrl);
+
+  console.log("[PLAYBACK] resolve input:", sourceUrl, result);
+
+  if (!result.ok && result.reason === "NOT_YOUTUBE") {
+    const sourceHost = getHostFromUrl(sourceUrl);
+    finalUrl = await resolveFinalUrl(sourceUrl);
+    console.log("[PLAYBACK] resolved final URL:", finalUrl);
+
+    const finalHost = finalUrl ? getHostFromUrl(finalUrl) : null;
+    const shouldUseWebViewFallback =
+      isHttpSchemeUrl(finalUrl ?? sourceUrl) &&
+      (!finalUrl || (sourceHost !== null && finalHost === sourceHost));
+
+    if (shouldUseWebViewFallback) {
+      const webViewResolvedUrl = await startRedirectProbe(finalUrl ?? sourceUrl);
+      console.log("[PLAYBACK] resolved final URL via WebView:", webViewResolvedUrl);
+      if (webViewResolvedUrl) {
+        finalUrl = webViewResolvedUrl;
+      }
+    }
+
+    if (!finalUrl) {
+      return {
+        ok: false,
+        sourceUrl,
+        finalUrl: null,
+        title: "네트워크 오류",
+        message: NETWORK_ERROR_MESSAGE,
+      };
+    }
+
+    result = extractYouTubeId(finalUrl);
+  }
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      sourceUrl,
+      finalUrl,
+      title: "지원하지 않는 QR",
+      message: mapExtractReasonToMessage(result.reason),
+    };
+  }
+
+  return {
+    ok: true,
+    sourceUrl,
+    finalUrl: finalUrl ?? sourceUrl,
+    videoId: result.videoId,
+  };
+}
+
+// Hosts the scanner and player flow used by the first tab.
+function ScannerPlayerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [mode, setMode] = useState<Mode>("scanner");
   const [scannerFacing, setScannerFacing] = useState<"back" | "front">("front");
@@ -104,6 +182,12 @@ export default function App() {
     sourceHost: string | null;
   } | null>(null);
 
+  const {
+    consumeReplayRequest,
+    pendingReplayRequest,
+    recordHistoryResult,
+  } = usePlaybackHistory();
+
   const scanLockedRef = useRef(false);
   const alertVisibleRef = useRef(false);
   const webViewRef = useRef<WebView>(null);
@@ -115,6 +199,7 @@ export default function App() {
     null,
   );
   const redirectProbeLatestUrlRef = useRef<string | null>(null);
+  const activePlaybackHistoryRef = useRef<ActivePlaybackHistory | null>(null);
 
   const html = useMemo(() => {
     if (!videoId) return "";
@@ -145,6 +230,7 @@ export default function App() {
   );
 
   const resetToScanner = useCallback((keepScanLocked = false) => {
+    activePlaybackHistoryRef.current = null;
     setMode("scanner");
     setVideoId(null);
     setPlayerUiState("idle");
@@ -234,6 +320,17 @@ export default function App() {
 
   const handlePlaybackFailure = useCallback(
     (message: string) => {
+      if (activePlaybackHistoryRef.current) {
+        recordHistoryResult({
+          historyId: activePlaybackHistoryRef.current.historyId,
+          sourceUrl: activePlaybackHistoryRef.current.sourceUrl,
+          resolvedUrl: activePlaybackHistoryRef.current.resolvedUrl,
+          status: "failure",
+          incrementPlayCount: false,
+        });
+        activePlaybackHistoryRef.current = null;
+      }
+
       if (mode !== "player") return;
       console.log("[PLAYER] playback failure:", message);
       setPlayerUiState("error");
@@ -242,7 +339,7 @@ export default function App() {
         scanLockedRef.current = false;
       });
     },
-    [mode, resetToScanner, showBlockingAlert],
+    [mode, recordHistoryResult, resetToScanner, showBlockingAlert],
   );
 
   useEffect(() => {
@@ -261,57 +358,65 @@ export default function App() {
     }
   }, [mode, playerUiState]);
 
-  const handleBarcodeScanned = async ({ data }: BarcodeScanningResult) => {
-    if (scanLockedRef.current || alertVisibleRef.current) return;
-    scanLockedRef.current = true;
-    setIsLoadingOverlayVisible(true);
-    console.log("[QR] scanned data:", data);
+  // Processes scanned or replayed input into a player session and logs history.
+  const handlePlaybackInput = useCallback(
+    async (input: string, historyId?: string) => {
+      if (scanLockedRef.current || alertVisibleRef.current) return;
 
-    const normalizedData = normalizeScannedInput(data);
-    let result = extractYouTubeId(normalizedData);
-    console.log("[QR] extract result:", result);
+      scanLockedRef.current = true;
+      setIsLoadingOverlayVisible(true);
+      activePlaybackHistoryRef.current = null;
 
-    if (!result.ok && result.reason === "NOT_YOUTUBE") {
-      const sourceHost = getHostFromUrl(normalizedData);
-      let finalUrl = await resolveFinalUrl(normalizedData);
-      console.log("[QR] resolved final URL:", finalUrl);
+      const result = await resolvePlaybackInput(input, startRedirectProbe);
 
-      const finalHost = finalUrl ? getHostFromUrl(finalUrl) : null;
-      const needsWebViewFallback =
-        !finalUrl || (sourceHost !== null && finalHost === sourceHost);
-
-      if (needsWebViewFallback) {
-        const webViewResolvedUrl = await startRedirectProbe(finalUrl ?? normalizedData);
-        console.log("[QR] resolved final URL via WebView:", webViewResolvedUrl);
-        if (webViewResolvedUrl) {
-          finalUrl = webViewResolvedUrl;
-        }
-      }
-
-      if (!finalUrl) {
-        showBlockingAlert("네트워크 오류", NETWORK_ERROR_MESSAGE, () => {
+      if (!result.ok) {
+        recordHistoryResult({
+          historyId,
+          sourceUrl: result.sourceUrl,
+          resolvedUrl: result.finalUrl,
+          status: "failure",
+          incrementPlayCount: false,
+        });
+        showBlockingAlert(result.title, result.message, () => {
           scanLockedRef.current = false;
         });
         return;
       }
 
-      result = extractYouTubeId(finalUrl);
-    }
+      const nextHistoryId = recordHistoryResult({
+        historyId,
+        sourceUrl: result.sourceUrl,
+        resolvedUrl: result.finalUrl,
+        status: "success",
+        incrementPlayCount: true,
+      });
 
-    if (!result.ok) {
-      showBlockingAlert(
-        "지원하지 않는 QR",
-        mapExtractReasonToMessage(result.reason),
-        () => {
-          scanLockedRef.current = false;
-        },
-      );
-      return;
-    }
+      activePlaybackHistoryRef.current = {
+        historyId: nextHistoryId,
+        sourceUrl: result.sourceUrl,
+        resolvedUrl: result.finalUrl,
+      };
+      setVideoId(result.videoId);
+      setPlayerUiState("loading");
+      setMode("player");
+    },
+    [recordHistoryResult, showBlockingAlert, startRedirectProbe],
+  );
 
-    setVideoId(result.videoId);
-    setPlayerUiState("loading");
-    setMode("player");
+  useEffect(() => {
+    if (!pendingReplayRequest) return;
+    if (mode !== "scanner") return;
+    if (scanLockedRef.current || alertVisibleRef.current) return;
+
+    consumeReplayRequest(pendingReplayRequest.requestId);
+    void handlePlaybackInput(
+      pendingReplayRequest.sourceUrl,
+      pendingReplayRequest.historyId,
+    );
+  }, [consumeReplayRequest, handlePlaybackInput, mode, pendingReplayRequest]);
+
+  const handleBarcodeScanned = ({ data }: BarcodeScanningResult) => {
+    void handlePlaybackInput(data);
   };
 
   const handlePlayerMessage = (event: WebViewMessageEvent) => {
@@ -363,11 +468,30 @@ export default function App() {
     `);
   };
 
-  if (!permission) {
+  const loadingOverlay = isLoadingOverlayVisible ? (
+    <View style={styles.loadingOverlay}>
+      <View style={styles.loadingCard}>
+        <ActivityIndicator size="large" color="#2563EB" />
+        <Text style={styles.loadingTitle}>영상 준비 중</Text>
+        <Text style={styles.loadingDescription}>잠시만 기다려 주세요.</Text>
+      </View>
+    </View>
+  ) : null;
+
+  if (!permission && mode === "scanner") {
     return <View style={styles.blank} />;
   }
 
-  if (!permission.granted) {
+  if (mode === "scanner" && !permission?.granted) {
+    if (isLoadingOverlayVisible) {
+      return (
+        <SafeAreaView style={styles.container}>
+          <View style={styles.blank} />
+          {loadingOverlay}
+        </SafeAreaView>
+      );
+    }
+
     return (
       <SafeAreaView style={styles.center}>
         <Text style={styles.permissionTitle}>카메라 권한이 필요해요</Text>
@@ -451,17 +575,7 @@ export default function App() {
           />
         ) : null}
 
-        {isLoadingOverlayVisible ? (
-          <View style={styles.loadingOverlay}>
-            <View style={styles.loadingCard}>
-              <ActivityIndicator size="large" color="#2563EB" />
-              <Text style={styles.loadingTitle}>영상 준비 중</Text>
-              <Text style={styles.loadingDescription}>
-                잠시만 기다려 주세요.
-              </Text>
-            </View>
-          </View>
-        ) : null}
+        {loadingOverlay}
       </SafeAreaView>
     );
   }
@@ -557,17 +671,14 @@ export default function App() {
         />
       ) : null}
 
-      {isLoadingOverlayVisible ? (
-        <View style={styles.loadingOverlay}>
-          <View style={styles.loadingCard}>
-            <ActivityIndicator size="large" color="#2563EB" />
-            <Text style={styles.loadingTitle}>영상 준비 중</Text>
-            <Text style={styles.loadingDescription}>잠시만 기다려 주세요.</Text>
-          </View>
-        </View>
-      ) : null}
+      {loadingOverlay}
     </SafeAreaView>
   );
+}
+
+// Exports the scanner-player feature for the first tab route.
+export default function App() {
+  return <ScannerPlayerScreen />;
 }
 
 const styles = StyleSheet.create({
