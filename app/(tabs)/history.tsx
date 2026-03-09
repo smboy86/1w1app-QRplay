@@ -33,15 +33,12 @@ export default function HistoryScreen() {
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListHeaderComponent={
           <View style={styles.header}>
-            <Text selectable style={styles.eyebrow}>
-              Replay Archive
-            </Text>
             <Text selectable style={styles.title}>
-              히스토리
+              QR스캔 히스토리
             </Text>
             <Text selectable style={styles.description}>
-              최근 QR 재생 주소를 순서대로 모아두었습니다. 카드를 터치하면
-              스캔 탭에서 같은 재생 방식으로 다시 실행됩니다.
+              최근 QR 재생 주소를 순서대로 모아두었습니다. 카드를 터치하면 스캔
+              탭에서 같은 재생 방식으로 다시 실행됩니다.
             </Text>
           </View>
         }
@@ -78,7 +75,9 @@ export default function HistoryScreen() {
               <View
                 style={[
                   styles.cardAccent,
-                  isSuccess ? styles.cardAccentSuccess : styles.cardAccentFailure,
+                  isSuccess
+                    ? styles.cardAccentSuccess
+                    : styles.cardAccentFailure,
                 ]}
               />
 
@@ -95,20 +94,26 @@ export default function HistoryScreen() {
                 <View
                   style={[
                     styles.statusBadge,
-                    isSuccess ? styles.statusBadgeSuccess : styles.statusBadgeFailure,
+                    isSuccess
+                      ? styles.statusBadgeSuccess
+                      : styles.statusBadgeFailure,
                   ]}
                 >
                   <View
                     style={[
                       styles.statusDot,
-                      isSuccess ? styles.statusDotSuccess : styles.statusDotFailure,
+                      isSuccess
+                        ? styles.statusDotSuccess
+                        : styles.statusDotFailure,
                     ]}
                   />
                   <Text
                     selectable
                     style={[
                       styles.statusText,
-                      isSuccess ? styles.statusTextSuccess : styles.statusTextFailure,
+                      isSuccess
+                        ? styles.statusTextSuccess
+                        : styles.statusTextFailure,
                     ]}
                   >
                     {isSuccess ? "성공" : "실패"}
