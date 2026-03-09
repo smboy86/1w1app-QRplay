@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { WebView } from "react-native-webview";
 
-const privacyPolicyUrl = "https://naver.com";
+import { PRIVACY_POLICY_URL } from "../src/config/app-links";
 
 // Renders the in-app popup that displays the privacy policy URL inside a web view.
 export default function PrivacyPolicyModalScreen() {
@@ -46,7 +46,7 @@ export default function PrivacyPolicyModalScreen() {
           <WebView
             originWhitelist={["*"]}
             setSupportMultipleWindows={false}
-            source={{ uri: privacyPolicyUrl }}
+            source={{ uri: PRIVACY_POLICY_URL }}
             startInLoadingState
             renderLoading={() => (
               <View style={styles.loadingContainer}>

@@ -1,9 +1,11 @@
+import { useRouter } from "expo-router";
 import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
+import { SERVICE_CONTACT_EMAIL } from "../../src/config/app-links";
+
 const appVersion = require("../../app.json").expo.version as string;
-const privacyPolicyUrl = "https://naver.com";
 const contactMailUrl =
-  `mailto:?subject=${encodeURIComponent("QRPlay 문의")}&body=${encodeURIComponent(
+  `mailto:${SERVICE_CONTACT_EMAIL}?subject=${encodeURIComponent("QRPlay 문의")}&body=${encodeURIComponent(
     `앱 버전: ${appVersion}\n\n문의 내용을 입력해주세요.`,
   )}`;
 
@@ -19,15 +21,6 @@ async function openExternalTarget(target: string) {
     await Linking.openURL(target);
   } catch {
     Alert.alert("열 수 없습니다", "연결할 수 있는 앱 또는 화면을 찾지 못했습니다.");
-  }
-}
-
-// Opens the Android app settings page for this application.
-async function openAppSettings() {
-  try {
-    await Linking.openSettings();
-  } catch {
-    Alert.alert("열 수 없습니다", "기기 설정 화면을 열지 못했습니다.");
   }
 }
 
@@ -67,6 +60,8 @@ function SettingsRow({ label, value, onPress }: SettingsRowProps) {
 
 // Renders the redesigned settings home screen for the third tab.
 export default function SettingsScreen() {
+  const router = useRouter();
+
   return (
     <View style={styles.screen}>
       <View style={styles.backgroundOrbPrimary} />
@@ -96,11 +91,18 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.listCard}>
-          <SettingsRow label="설정" onPress={() => void openAppSettings()} />
+          <SettingsRow
+            label="설정"
+            onPress={() => {
+              router.push("/settings-detail");
+            }}
+          />
           <View style={styles.divider} />
           <SettingsRow
             label="개인정보처리방침"
-            onPress={() => void openExternalTarget(privacyPolicyUrl)}
+            onPress={() => {
+              router.push("/privacy-policy-modal");
+            }}
           />
           <View style={styles.divider} />
           <SettingsRow label="앱 버전" value={appVersion} />

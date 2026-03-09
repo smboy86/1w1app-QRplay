@@ -13,6 +13,18 @@ export default function RootLayout() {
     <PlaybackHistoryProvider>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="settings-detail" options={{ title: "설정" }} />
+        <Stack.Screen
+          name="privacy-policy-modal"
+          options={{
+            headerShown: false,
+            presentation: "transparentModal",
+            animation: "fade",
+            contentStyle: {
+              backgroundColor: "transparent",
+            },
+          }}
+        />
       </Stack>
     </PlaybackHistoryProvider>
   );
