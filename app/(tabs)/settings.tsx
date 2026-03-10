@@ -23,10 +23,9 @@ import {
 import type { ScannerFacing } from "../../src/features/scanner/scanner-types";
 
 const appVersion = require("../../app.json").expo.version as string;
-const contactMailUrl =
-  `mailto:${SERVICE_CONTACT_EMAIL}?subject=${encodeURIComponent("QRPlay 문의")}&body=${encodeURIComponent(
-    `앱 버전: ${appVersion}\n\n문의 내용을 입력해주세요.`,
-  )}`;
+const contactMailUrl = `mailto:${SERVICE_CONTACT_EMAIL}?subject=${encodeURIComponent("QRPlay 문의")}&body=${encodeURIComponent(
+  `앱 버전: ${appVersion}\n\n문의 내용을 입력해주세요.`,
+)}`;
 
 type SettingsRowProps = {
   label: string;
@@ -47,7 +46,10 @@ async function openExternalTarget(target: string) {
   try {
     await Linking.openURL(target);
   } catch {
-    Alert.alert("열 수 없습니다", "연결할 수 있는 앱 또는 화면을 찾지 못했습니다.");
+    Alert.alert(
+      "열 수 없습니다",
+      "연결할 수 있는 앱 또는 화면을 찾지 못했습니다.",
+    );
   }
 }
 
@@ -187,7 +189,10 @@ export default function SettingsScreen() {
         await setDefaultScannerFacing(nextFacing);
       } catch {
         setDefaultCameraFacingState(previousFacing);
-        Alert.alert("저장할 수 없습니다", "기본 카메라 설정을 저장하지 못했습니다.");
+        Alert.alert(
+          "저장할 수 없습니다",
+          "기본 카메라 설정을 저장하지 못했습니다.",
+        );
       } finally {
         setIsSavingDefaultCameraFacing(false);
       }
@@ -212,7 +217,10 @@ export default function SettingsScreen() {
       >
         <View style={styles.introCard}>
           <View style={styles.iconShell}>
-            <Image source={require("../../assets/icon.png")} style={styles.icon} />
+            <Image
+              source={require("../../assets/icon.png")}
+              style={styles.icon}
+            />
           </View>
 
           <View style={styles.introTextBlock}>
@@ -223,7 +231,7 @@ export default function SettingsScreen() {
               앱 소개
             </Text>
             <Text selectable style={styles.description}>
-              아이와 함께하는 QR플레이북
+              누구나 함께하는 QR플레이북
             </Text>
           </View>
         </View>
@@ -237,7 +245,9 @@ export default function SettingsScreen() {
           />
           <View style={styles.divider} />
           <SettingsSwitchRow
-            currentValueLabel={defaultCameraFacing === "front" ? "전면" : "후면"}
+            currentValueLabel={
+              defaultCameraFacing === "front" ? "전면" : "후면"
+            }
             disabled={
               isSavingDefaultCameraFacing || !isDefaultCameraStorageReady
             }
@@ -249,7 +259,8 @@ export default function SettingsScreen() {
           />
           {!isDefaultCameraStorageReady ? (
             <Text selectable style={[styles.rowCaption, styles.storageWarning]}>
-              현재 설치된 안드로이드 앱에는 저장 모듈이 없어 재설치가 필요합니다.
+              현재 설치된 안드로이드 앱에는 저장 모듈이 없어 재설치가
+              필요합니다.
             </Text>
           ) : null}
           <View style={styles.divider} />

@@ -226,7 +226,7 @@ def create_feature_graphic(trimmed_icon: Image.Image) -> Path:
     draw_multiline(
         draw,
         (74, 324),
-        "아이와 함께 QR을 비추고 단일 영상을 빠르게 재생하세요.",
+        "누구나 함께 QR을 비추고 단일 영상을 빠르게 재생하세요.",
         subtitle_font,
         TEXT_MUTED,
         420,
@@ -511,7 +511,7 @@ def render_settings_screen(canvas: Image.Image, box: tuple[int, int, int, int], 
     draw.rounded_rectangle((intro[0] + int(174 * scale), intro[1] + int(46 * scale), intro[0] + int(264 * scale), intro[1] + int(82 * scale)), radius=int(18 * scale), fill=BRAND_YELLOW)
     draw.text((intro[0] + int(194 * scale), intro[1] + int(54 * scale)), "QRPlay", font=load_font(int(18 * scale), bold=True), fill="#4F4200")
     draw.text((intro[0] + int(174 * scale), intro[1] + int(96 * scale)), "앱 소개", font=load_font(int(38 * scale), bold=True), fill=TEXT_DARK)
-    draw.text((intro[0] + int(174 * scale), intro[1] + int(148 * scale)), "아이와 함께하는 QR플레이북", font=load_font(int(24 * scale)), fill=TEXT_MUTED)
+    draw.text((intro[0] + int(174 * scale), intro[1] + int(148 * scale)), "누구나 함께하는 QR플레이북", font=load_font(int(24 * scale)), fill=TEXT_MUTED)
 
     list_box = (left + int(44 * scale), top + int(258 * scale), right - int(44 * scale), bottom - int(44 * scale))
     draw.rounded_rectangle(list_box, radius=int(30 * scale), fill=(255, 255, 255, 235))
