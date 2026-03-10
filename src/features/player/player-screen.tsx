@@ -12,6 +12,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -27,7 +28,14 @@ import {
 import type { BridgeMessage, PlayerUiState } from "../../lib/types";
 
 const APP_ORIGIN = "https://qrplay.app.local";
+const PLAYER_ASPECT_RATIO = 16 / 9;
 const PLAYER_READY_TIMEOUT_MS = 15000;
+const PLAYER_HORIZONTAL_PADDING = 16;
+const CONTROL_BUTTON_HEIGHT = 38;
+const CONTROL_BUTTON_GAP = 10;
+const CONTROL_BUTTON_MAX_WIDTH = 112;
+const CONTROL_BUTTON_MIN_WIDTH = 96;
+const CONTROL_TOP_PADDING = 12;
 // "player": block only WebView area, "app": block entire app while video is playing.
 const PLAYBACK_TOUCH_BLOCK_SCOPE: "player" | "app" = "player";
 
@@ -49,6 +57,7 @@ function readSearchParam(value: string | string[] | undefined): string | null {
 // Renders the dedicated playback route for a resolved YouTube session.
 export function PlayerScreen() {
   const router = useRouter();
+  const { height, width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { recordHistoryResult } = usePlaybackHistory();
   const params = useLocalSearchParams<{
@@ -229,6 +238,26 @@ export function PlayerScreen() {
   const shouldBlockPlayerAreaTouch =
     isPlaying && PLAYBACK_TOUCH_BLOCK_SCOPE === "player";
   const shouldBlockAppTouch = isPlaying && PLAYBACK_TOUCH_BLOCK_SCOPE === "app";
+  const controlsPaddingBottom = Math.max(12, insets.bottom + 8);
+  const controlsTotalHeight =
+    CONTROL_TOP_PADDING + controlsPaddingBottom + CONTROL_BUTTON_HEIGHT;
+  const maxPlayerWidth = Math.max(0, width - PLAYER_HORIZONTAL_PADDING * 2);
+  const fullWidthPlayerHeight = maxPlayerWidth / PLAYER_ASPECT_RATIO;
+  const availablePlayerHeight = Math.max(0, height - controlsTotalHeight);
+  const playerHeight = Math.min(fullWidthPlayerHeight, availablePlayerHeight);
+  const playerWidth = Math.min(
+    maxPlayerWidth,
+    Math.max(0, playerHeight * PLAYER_ASPECT_RATIO),
+  );
+  const maxFittingButtonWidth = Math.max(
+    0,
+    (width - PLAYER_HORIZONTAL_PADDING * 2 - CONTROL_BUTTON_GAP) / 2,
+  );
+  const controlButtonWidth = Math.min(
+    CONTROL_BUTTON_MAX_WIDTH,
+    Math.max(CONTROL_BUTTON_MIN_WIDTH, playerWidth * 0.33),
+    maxFittingButtonWidth,
+  );
 
   if (!isPlaybackSessionReady) {
     return <View style={styles.blank} />;
@@ -236,7 +265,15 @@ export function PlayerScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.playerArea}>
+      <View
+        style={[
+          styles.playerArea,
+          {
+            height: playerHeight,
+            width: playerWidth,
+          },
+        ]}
+      >
         <WebView
           ref={webViewRef}
           originWhitelist={["*"]}
@@ -288,7 +325,7 @@ export function PlayerScreen() {
         style={[
           styles.controls,
           {
-            paddingBottom: Math.max(18, insets.bottom + 12),
+            paddingBottom: controlsPaddingBottom,
           },
         ]}
       >
@@ -296,6 +333,9 @@ export function PlayerScreen() {
           disabled={isPrimaryDisabled}
           style={({ pressed }) => [
             styles.primaryButton,
+            {
+              width: controlButtonWidth,
+            },
             isPrimaryDisabled && styles.disabledButton,
             pressed && !isPrimaryDisabled && styles.pressedButton,
           ]}
@@ -314,6 +354,9 @@ export function PlayerScreen() {
         <Pressable
           style={({ pressed }) => [
             styles.secondaryButton,
+            {
+              width: controlButtonWidth,
+            },
             pressed && styles.pressedButton,
           ]}
           onPress={() => closePlayer()}
@@ -346,8 +389,7 @@ const styles = StyleSheet.create({
   },
   playerArea: {
     position: "relative",
-    width: "100%",
-    aspectRatio: 16 / 9,
+    alignSelf: "center",
     backgroundColor: "#000000",
   },
   closeButton: {
@@ -372,23 +414,24 @@ const styles = StyleSheet.create({
   },
   controls: {
     flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingTop: 18,
-    gap: 12,
+    justifyContent: "center",
+    paddingHorizontal: PLAYER_HORIZONTAL_PADDING,
+    paddingTop: CONTROL_TOP_PADDING,
+    gap: CONTROL_BUTTON_GAP,
   },
   primaryButton: {
-    flex: 1,
-    borderRadius: 14,
+    height: CONTROL_BUTTON_HEIGHT,
+    borderRadius: 10,
     backgroundColor: "#2563EB",
-    paddingVertical: 16,
     alignItems: "center",
+    justifyContent: "center",
   },
   secondaryButton: {
-    flex: 1,
-    borderRadius: 14,
+    height: CONTROL_BUTTON_HEIGHT,
+    borderRadius: 10,
     backgroundColor: "#4B5563",
-    paddingVertical: 16,
     alignItems: "center",
+    justifyContent: "center",
   },
   pressedButton: {
     opacity: 0.85,
@@ -399,7 +442,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: "#FFFFFF",
-    fontSize: 17,
+    fontSize: 14,
     fontWeight: "700",
   },
   loadingOverlay: {
