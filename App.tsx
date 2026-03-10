@@ -296,6 +296,7 @@ function ScannerScreen() {
 
   const {
     consumeReplayRequest,
+    isHistoryReady,
     pendingReplayRequest,
     recordHistoryResult,
   } = usePlaybackHistory();
@@ -783,16 +784,18 @@ function ScannerScreen() {
     </View>
   ) : null;
 
-  if (!isDefaultCameraFacingReady) {
+  if (!isDefaultCameraFacingReady || !isHistoryReady) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.blank} />
         <View style={styles.loadingOverlay}>
           <View style={styles.loadingCard}>
             <ActivityIndicator size="large" color="#60A5FA" />
-            <Text style={styles.loadingTitle}>카메라 준비 중</Text>
+            <Text style={styles.loadingTitle}>앱 준비 중</Text>
             <Text style={styles.loadingDescription}>
-              저장된 기본 카메라 설정을 불러오고 있어요.
+              {!isDefaultCameraFacingReady
+                ? "저장된 기본 카메라 설정을 불러오고 있어요."
+                : "저장된 QR 히스토리를 불러오고 있어요."}
             </Text>
           </View>
         </View>

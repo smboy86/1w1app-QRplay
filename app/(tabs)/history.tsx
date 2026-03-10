@@ -1,5 +1,12 @@
 import { useRouter } from "expo-router";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { useFloatingTabBarMetrics } from "../../src/features/floating-tab-bar/floating-tab-bar-context";
 import { usePlaybackHistory } from "../../src/features/playback-history/playback-history-context";
@@ -18,7 +25,7 @@ function formatHistoryTimestamp(timestamp: number): string {
 export default function HistoryScreen() {
   const router = useRouter();
   const { reservedBottomSpace } = useFloatingTabBarMetrics();
-  const { history, requestReplay } = usePlaybackHistory();
+  const { history, isHistoryReady, requestReplay } = usePlaybackHistory();
   const totalCount = history.length;
 
   return (
@@ -50,18 +57,30 @@ export default function HistoryScreen() {
           </View>
         }
         ListEmptyComponent={
-          <View style={styles.emptyCard}>
-            <View style={styles.emptyIconShell}>
-              <View style={styles.emptyIconCore} />
+          isHistoryReady ? (
+            <View style={styles.emptyCard}>
+              <View style={styles.emptyIconShell}>
+                <View style={styles.emptyIconCore} />
+              </View>
+              <Text selectable style={styles.emptyTitle}>
+                아직 저장된 재생 기록이 없습니다
+              </Text>
+              <Text selectable style={styles.emptyDescription}>
+                QR을 한 번 재생하면 이 탭에 성공/실패 상태와 재생 횟수가 함께
+                쌓입니다.
+              </Text>
             </View>
-            <Text selectable style={styles.emptyTitle}>
-              아직 저장된 재생 기록이 없습니다
-            </Text>
-            <Text selectable style={styles.emptyDescription}>
-              QR을 한 번 재생하면 이 탭에 성공/실패 상태와 재생 횟수가 함께
-              쌓입니다.
-            </Text>
-          </View>
+          ) : (
+            <View style={styles.emptyCard}>
+              <ActivityIndicator size="large" color="#4E8EF7" />
+              <Text selectable style={styles.emptyTitle}>
+                히스토리 불러오는 중
+              </Text>
+              <Text selectable style={styles.emptyDescription}>
+                저장된 QR 재생 기록을 읽고 있어요.
+              </Text>
+            </View>
+          )
         }
         renderItem={({ item, index }) => {
           const isSuccess = item.lastStatus === "success";

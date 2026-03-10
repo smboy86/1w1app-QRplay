@@ -1,5 +1,6 @@
 import React, {
   createContext,
+  useEffect,
   useRef,
   useState,
   type PropsWithChildren,
@@ -10,6 +11,10 @@ import type {
   PlaybackHistoryEntry,
   ReplayRequest,
 } from "../../lib/types";
+import {
+  loadStoredPlaybackHistory,
+  saveStoredPlaybackHistory,
+} from "./playback-history-storage";
 
 type RecordHistoryResultInput = {
   historyId?: string;
@@ -21,6 +26,7 @@ type RecordHistoryResultInput = {
 
 type PlaybackHistoryContextValue = {
   history: PlaybackHistoryEntry[];
+  isHistoryReady: boolean;
   pendingReplayRequest: ReplayRequest | null;
   recordHistoryResult: (input: RecordHistoryResultInput) => string;
   requestReplay: (historyId: string) => void;
@@ -82,9 +88,40 @@ export function PlaybackHistoryProvider({
   children,
 }: PropsWithChildren): React.JSX.Element {
   const [history, setHistory] = useState<PlaybackHistoryEntry[]>([]);
+  const [isHistoryReady, setIsHistoryReady] = useState(false);
   const historyRef = useRef<PlaybackHistoryEntry[]>([]);
   const [pendingReplayRequest, setPendingReplayRequest] =
     useState<ReplayRequest | null>(null);
+
+  // Restores the persisted playback history before the app starts reading it.
+  useEffect(() => {
+    let isActive = true;
+
+    void (async () => {
+      const storedHistory = await loadStoredPlaybackHistory();
+
+      if (!isActive) {
+        return;
+      }
+
+      historyRef.current = storedHistory;
+      setHistory(storedHistory);
+      setIsHistoryReady(true);
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  // Persists the current playback history whenever the in-memory list changes.
+  useEffect(() => {
+    if (!isHistoryReady) {
+      return;
+    }
+
+    void saveStoredPlaybackHistory(historyRef.current);
+  }, [history, isHistoryReady]);
 
   // Records the latest result for a scanned or replayed URL.
   function recordHistoryResult(input: RecordHistoryResultInput): string {
@@ -121,6 +158,7 @@ export function PlaybackHistoryProvider({
     <PlaybackHistoryContext.Provider
       value={{
         history,
+        isHistoryReady,
         pendingReplayRequest,
         recordHistoryResult,
         requestReplay,
