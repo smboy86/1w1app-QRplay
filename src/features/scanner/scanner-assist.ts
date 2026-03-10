@@ -1,3 +1,5 @@
+import type { ScannerFacing } from "./scanner-types";
+
 export type ScanAssistState =
   | "idle"
   | "searching"
@@ -5,8 +7,6 @@ export type ScanAssistState =
   | "center-code"
   | "flatten-angle"
   | "suggest-rear-camera";
-
-export type ScannerFacing = "back" | "front";
 
 export type NormalizedPoint = {
   x: number;

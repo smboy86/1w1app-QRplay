@@ -1,3 +1,4 @@
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import React, {
   useCallback,
   useEffect,
@@ -44,12 +45,16 @@ import {
   type HighlightFrame,
   type ScanAssistState,
   type ScannerBarcodeCandidate,
-  type ScannerFacing,
   type ScannerFocusState,
   type ScannerFocusStateEvent,
   type ScannerPotentialBarcodesEvent,
   type ScannerZoomSuggestionEvent,
 } from "./src/features/scanner/scanner-assist";
+import type { ScannerFacing } from "./src/features/scanner/scanner-types";
+import {
+  DEFAULT_SCANNER_FACING,
+  getDefaultScannerFacing,
+} from "./src/features/settings/default-camera-storage";
 import {
   extractYouTubeId,
   mapExtractReasonToMessage,
@@ -66,7 +71,9 @@ const INITIAL_SPLASH_DELAY_MS = 3000;
 const REDIRECT_WEBVIEW_TIMEOUT_MS = 9000;
 const FRONT_CAMERA_IDLE_SUGGESTION_DELAY_MS = 2500;
 const SCAN_HIGHLIGHT_VISIBLE_MS = 750;
-const IS_ANDROID_NATIVE_SCANNER = process.env.EXPO_OS === "android";
+const IS_ANDROID_NATIVE_SCANNER =
+  process.env.EXPO_OS === "android" &&
+  process.env.EXPO_PUBLIC_ENABLE_ANDROID_NATIVE_SCANNER === "1";
 
 type ResolvedPlaybackInputResult =
   | { ok: true; sourceUrl: string; finalUrl: string; videoId: string }
@@ -253,7 +260,10 @@ function isZoomLevelSelected(currentZoomLevel: number, targetZoomLevel: number) 
 // Hosts the QR scanner flow used by the first tab.
 function ScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
-  const [scannerFacing, setScannerFacing] = useState<ScannerFacing>("front");
+  const [scannerFacing, setScannerFacing] =
+    useState<ScannerFacing>(DEFAULT_SCANNER_FACING);
+  const [isDefaultCameraFacingReady, setIsDefaultCameraFacingReady] =
+    useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [scanAssistState, setScanAssistState] =
     useState<ScanAssistState>("searching");
@@ -273,6 +283,7 @@ function ScannerScreen() {
   const [isLoadingOverlayVisible, setIsLoadingOverlayVisible] = useState(false);
   const [isRearCameraSuggestionVisible, setIsRearCameraSuggestionVisible] =
     useState(false);
+  const [isScannerHintCollapsed, setIsScannerHintCollapsed] = useState(false);
   const [redirectProbe, setRedirectProbe] = useState<{
     key: number;
     sourceUrl: string;
@@ -355,6 +366,51 @@ function ScannerScreen() {
       alertVisibleRef.current = false;
       resetScannerAssist();
     }, [resetScannerAssist]),
+  );
+
+  // Loads the persisted default camera facing before the scanner preview is shown.
+  useEffect(() => {
+    let isActive = true;
+
+    void (async () => {
+      const savedFacing = await getDefaultScannerFacing();
+
+      if (!isActive) {
+        return;
+      }
+
+      setScannerFacing(savedFacing);
+      setIsDefaultCameraFacingReady(true);
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  // Refreshes the default camera facing whenever the scanner tab regains focus.
+  useFocusEffect(
+    useCallback(() => {
+      if (!isDefaultCameraFacingReady) {
+        return undefined;
+      }
+
+      let isActive = true;
+
+      void (async () => {
+        const savedFacing = await getDefaultScannerFacing();
+
+        if (!isActive) {
+          return;
+        }
+
+        setScannerFacing(savedFacing);
+      })();
+
+      return () => {
+        isActive = false;
+      };
+    }, [isDefaultCameraFacingReady]),
   );
 
   const showBlockingAlert = useCallback(
@@ -667,6 +723,11 @@ function ScannerScreen() {
     resetScannerAssist();
   }, [resetScannerAssist, scannerFacing]);
 
+  // Toggles the scanner guide card between collapsed and expanded states.
+  const handleScannerHintToggle = useCallback(() => {
+    setIsScannerHintCollapsed((current) => !current);
+  }, []);
+
   // Applies a front-camera zoom preset chosen from the overlay chips.
   const handleZoomLevelPress = useCallback((nextZoomLevel: number) => {
     setZoomLevel(nextZoomLevel);
@@ -721,6 +782,23 @@ function ScannerScreen() {
       </View>
     </View>
   ) : null;
+
+  if (!isDefaultCameraFacingReady) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.blank} />
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingCard}>
+            <ActivityIndicator size="large" color="#60A5FA" />
+            <Text style={styles.loadingTitle}>카메라 준비 중</Text>
+            <Text style={styles.loadingDescription}>
+              저장된 기본 카메라 설정을 불러오고 있어요.
+            </Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!permission) {
     return <View style={styles.blank} />;
@@ -900,6 +978,23 @@ function ScannerScreen() {
               },
             ]}
           >
+            <Pressable
+              accessibilityLabel={
+                isScannerHintCollapsed ? "스캔 안내 펼치기" : "스캔 안내 접기"
+              }
+              accessibilityRole="button"
+              onPress={handleScannerHintToggle}
+              style={({ pressed }) => [
+                styles.scannerHintToggle,
+                pressed && styles.pressedButton,
+              ]}
+            >
+              <MaterialIcons
+                color="#E2E8F0"
+                name={isScannerHintCollapsed ? "expand-more" : "expand-less"}
+                size={22}
+              />
+            </Pressable>
             <View style={styles.scannerHeadingRow}>
               <Text style={styles.scannerEyebrow}>
                 {isFrontCamera ? "셀카 스캔 보조" : "후면 스캔"}
@@ -910,55 +1005,61 @@ function ScannerScreen() {
                   : "QR 1개만 비춰 주세요"}
               </Text>
             </View>
-            <Text style={styles.scannerTitle}>{scanAssistCopy.title}</Text>
-            <Text style={styles.scannerDescription}>
-              {scanAssistCopy.description}
-            </Text>
+            {isScannerHintCollapsed ? null : (
+              <>
+                <Text style={styles.scannerTitle}>{scanAssistCopy.title}</Text>
+                <Text style={styles.scannerDescription}>
+                  {scanAssistCopy.description}
+                </Text>
 
-            {isFrontCamera ? (
-              <View style={styles.zoomChipRow}>
-                {FRONT_CAMERA_ZOOM_LEVELS.map((level) => (
+                {isFrontCamera ? (
+                  <View style={styles.zoomChipRow}>
+                    {FRONT_CAMERA_ZOOM_LEVELS.map((level) => (
+                      <Pressable
+                        key={level}
+                        onPress={() => handleZoomLevelPress(level)}
+                        style={({ pressed }) => [
+                          styles.zoomChip,
+                          isZoomLevelSelected(zoomLevel, level) &&
+                            styles.zoomChipActive,
+                          pressed && styles.pressedButton,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.zoomChipLabel,
+                            isZoomLevelSelected(zoomLevel, level) &&
+                              styles.zoomChipLabelActive,
+                          ]}
+                        >
+                          {level.toFixed(1)}x
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
+
+                <Text style={styles.focusHint}>
+                  {IS_ANDROID_NATIVE_SCANNER
+                    ? "프레임을 눌러 초점을 다시 맞추고, 두 손가락으로 확대할 수 있어요."
+                    : "QR이 잘 안 읽히면 프레임 안에서 가운데 정렬과 거리를 먼저 조정해 주세요."}
+                </Text>
+
+                {shouldShowRearCameraCta ? (
                   <Pressable
-                    key={level}
-                    onPress={() => handleZoomLevelPress(level)}
+                    onPress={handleRearCameraSwitch}
                     style={({ pressed }) => [
-                      styles.zoomChip,
-                      isZoomLevelSelected(zoomLevel, level) &&
-                        styles.zoomChipActive,
+                      styles.rearCameraButton,
                       pressed && styles.pressedButton,
                     ]}
                   >
-                    <Text
-                      style={[
-                        styles.zoomChipLabel,
-                        isZoomLevelSelected(zoomLevel, level) &&
-                          styles.zoomChipLabelActive,
-                      ]}
-                    >
-                      {level.toFixed(1)}x
+                    <Text style={styles.rearCameraButtonText}>
+                      후면 카메라로 전환
                     </Text>
                   </Pressable>
-                ))}
-              </View>
-            ) : null}
-
-            <Text style={styles.focusHint}>
-              {IS_ANDROID_NATIVE_SCANNER
-                ? "프레임을 눌러 초점을 다시 맞추고, 두 손가락으로 확대할 수 있어요."
-                : "QR이 잘 안 읽히면 프레임 안에서 가운데 정렬과 거리를 먼저 조정해 주세요."}
-            </Text>
-
-            {shouldShowRearCameraCta ? (
-              <Pressable
-                onPress={handleRearCameraSwitch}
-                style={({ pressed }) => [
-                  styles.rearCameraButton,
-                  pressed && styles.pressedButton,
-                ]}
-              >
-                <Text style={styles.rearCameraButtonText}>후면 카메라로 전환</Text>
-              </Pressable>
-            ) : null}
+                ) : null}
+              </>
+            )}
           </View>
         </View>
       </View>
@@ -1152,11 +1253,23 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     gap: 12,
   },
+  scannerHintToggle: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(15, 23, 42, 0.7)",
+  },
   scannerHeadingRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     gap: 12,
+    paddingRight: 40,
   },
   scannerEyebrow: {
     color: "#7DD3FC",

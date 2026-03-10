@@ -10,11 +10,11 @@ import {
 
 import type {
   ScannerBarcodeEvent,
-  ScannerFacing,
   ScannerFocusStateEvent,
   ScannerPotentialBarcodesEvent,
   ScannerZoomSuggestionEvent,
 } from "./scanner-assist";
+import type { ScannerFacing } from "./scanner-types";
 
 type TapFocusRequest = {
   requestId: number;

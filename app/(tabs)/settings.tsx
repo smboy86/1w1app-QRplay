@@ -1,8 +1,26 @@
-import { useRouter } from "expo-router";
-import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import {
+  Alert,
+  Image,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from "react-native";
 
 import { SERVICE_CONTACT_EMAIL } from "../../src/config/app-links";
 import { useFloatingTabBarMetrics } from "../../src/features/floating-tab-bar/floating-tab-bar-context";
+import {
+  DEFAULT_SCANNER_FACING,
+  getDefaultScannerFacing,
+  isDefaultCameraStorageAvailable,
+  setDefaultScannerFacing,
+} from "../../src/features/settings/default-camera-storage";
+import type { ScannerFacing } from "../../src/features/scanner/scanner-types";
 
 const appVersion = require("../../app.json").expo.version as string;
 const contactMailUrl =
@@ -14,6 +32,14 @@ type SettingsRowProps = {
   label: string;
   value?: string;
   onPress?: () => void;
+};
+
+type SettingsSwitchRowProps = {
+  currentValueLabel: string;
+  disabled?: boolean;
+  isEnabled: boolean;
+  label: string;
+  onValueChange: (nextValue: boolean) => void;
 };
 
 // Opens a supported external target and shows an error if it cannot be handled.
@@ -59,10 +85,115 @@ function SettingsRow({ label, value, onPress }: SettingsRowProps) {
   );
 }
 
+// Renders a switch-based settings row with a tappable container and current value label.
+function SettingsSwitchRow({
+  currentValueLabel,
+  disabled,
+  isEnabled,
+  label,
+  onValueChange,
+}: SettingsSwitchRowProps) {
+  return (
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityState={{ checked: isEnabled, disabled }}
+      disabled={disabled}
+      onPress={() => onValueChange(!isEnabled)}
+      style={({ pressed }) => [
+        styles.row,
+        styles.switchRow,
+        disabled ? styles.rowDisabled : undefined,
+        pressed && !disabled ? styles.rowPressed : undefined,
+      ]}
+    >
+      <View style={styles.switchLabelBlock}>
+        <Text selectable style={styles.rowLabel}>
+          {label}
+        </Text>
+        <Text selectable style={styles.rowCaption}>
+          전면 활성화 · 끄면 후면
+        </Text>
+      </View>
+
+      <View style={styles.rowRight}>
+        <Text selectable style={styles.rowValue}>
+          {currentValueLabel}
+        </Text>
+        <Switch
+          disabled={disabled}
+          ios_backgroundColor="#D8E1EA"
+          onValueChange={onValueChange}
+          trackColor={{
+            false: "#D8E1EA",
+            true: "#6FC58A",
+          }}
+          value={isEnabled}
+        />
+      </View>
+    </Pressable>
+  );
+}
+
 // Renders the redesigned settings home screen for the third tab.
 export default function SettingsScreen() {
   const router = useRouter();
   const { reservedBottomSpace } = useFloatingTabBarMetrics();
+  const isDefaultCameraStorageReady = isDefaultCameraStorageAvailable();
+  const [defaultCameraFacing, setDefaultCameraFacingState] =
+    useState<ScannerFacing>(DEFAULT_SCANNER_FACING);
+  const [isSavingDefaultCameraFacing, setIsSavingDefaultCameraFacing] =
+    useState(false);
+
+  // Refreshes the saved default camera facing whenever the settings tab becomes active.
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+
+      void (async () => {
+        if (!isDefaultCameraStorageReady) {
+          setDefaultCameraFacingState(DEFAULT_SCANNER_FACING);
+          return;
+        }
+
+        const savedFacing = await getDefaultScannerFacing();
+
+        if (!isActive) {
+          return;
+        }
+
+        setDefaultCameraFacingState(savedFacing);
+      })();
+
+      return () => {
+        isActive = false;
+      };
+    }, [isDefaultCameraStorageReady]),
+  );
+
+  // Updates and persists the default scanner camera when the settings switch is toggled.
+  const handleDefaultCameraToggle = useCallback(
+    async (isFrontCameraEnabled: boolean) => {
+      const nextFacing: ScannerFacing = isFrontCameraEnabled ? "front" : "back";
+
+      if (nextFacing === defaultCameraFacing) {
+        return;
+      }
+
+      const previousFacing = defaultCameraFacing;
+      setDefaultCameraFacingState(nextFacing);
+      setIsSavingDefaultCameraFacing(true);
+
+      try {
+        await setDefaultScannerFacing(nextFacing);
+      } catch {
+        setDefaultCameraFacingState(previousFacing);
+        Alert.alert("저장할 수 없습니다", "기본 카메라 설정을 저장하지 못했습니다.");
+      } finally {
+        setIsSavingDefaultCameraFacing(false);
+      }
+    },
+    [defaultCameraFacing],
+  );
 
   return (
     <View style={styles.screen}>
@@ -104,6 +235,23 @@ export default function SettingsScreen() {
               router.push("/settings-detail");
             }}
           />
+          <View style={styles.divider} />
+          <SettingsSwitchRow
+            currentValueLabel={defaultCameraFacing === "front" ? "전면" : "후면"}
+            disabled={
+              isSavingDefaultCameraFacing || !isDefaultCameraStorageReady
+            }
+            isEnabled={defaultCameraFacing === "front"}
+            label="기본 카메라 설정"
+            onValueChange={(nextValue) => {
+              void handleDefaultCameraToggle(nextValue);
+            }}
+          />
+          {!isDefaultCameraStorageReady ? (
+            <Text selectable style={[styles.rowCaption, styles.storageWarning]}>
+              현재 설치된 안드로이드 앱에는 저장 모듈이 없어 재설치가 필요합니다.
+            </Text>
+          ) : null}
           <View style={styles.divider} />
           <SettingsRow
             label="개인정보처리방침"
@@ -231,11 +379,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
   },
+  switchRow: {
+    minHeight: 88,
+  },
+  switchLabelBlock: {
+    flex: 1,
+    gap: 6,
+    paddingRight: 12,
+  },
+  rowCaption: {
+    color: "#7B8795",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  storageWarning: {
+    paddingHorizontal: 22,
+    paddingBottom: 18,
+    color: "#8A5A00",
+  },
   rowRight: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
     gap: 10,
+  },
+  rowDisabled: {
+    opacity: 0.72,
   },
   rowValue: {
     color: "#6A7887",
