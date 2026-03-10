@@ -21,6 +21,7 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
+import { useIsFocused } from "@react-navigation/native";
 import {
   CameraView,
   type BarcodeScanningResult,
@@ -28,11 +29,11 @@ import {
 } from "expo-camera";
 import * as SplashScreen from "expo-splash-screen";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { WebView } from "react-native-webview";
 
 import { useFloatingTabBarMetrics } from "./src/features/floating-tab-bar/floating-tab-bar-context";
 import { ANDROID_FLOATING_TAB_BAR_COMPACT_HEIGHT_THRESHOLD } from "./src/features/floating-tab-bar/floating-tab-bar-constants";
 import { usePlaybackHistory } from "./src/features/playback-history/playback-history-context";
+import { usePlaybackInputResolver } from "./src/features/player/use-playback-input-resolver";
 import { AndroidQrScannerView } from "./src/features/scanner/android-qr-scanner-view";
 import {
   FRONT_CAMERA_ZOOM_LEVELS,
@@ -55,192 +56,17 @@ import {
   DEFAULT_SCANNER_FACING,
   getDefaultScannerFacing,
 } from "./src/features/settings/default-camera-storage";
-import {
-  extractYouTubeId,
-  mapExtractReasonToMessage,
-} from "./src/lib/extractYouTubeId";
-import { NETWORK_ERROR_MESSAGE } from "./src/lib/mapYouTubeError";
-import {
-  isSupportedLandingPageHost,
-  mapLandingPageResolveReasonToMessage,
-  resolveLandingPageYouTube,
-} from "./src/lib/resolveLandingPageYouTube";
-import { resolveFinalUrl } from "./src/lib/resolveRedirectUrl";
 
 const INITIAL_SPLASH_DELAY_MS = 3000;
-const REDIRECT_WEBVIEW_TIMEOUT_MS = 9000;
 const FRONT_CAMERA_IDLE_SUGGESTION_DELAY_MS = 2500;
 const SCAN_HIGHLIGHT_VISIBLE_MS = 750;
 const IS_ANDROID_NATIVE_SCANNER =
   process.env.EXPO_OS === "android" &&
   process.env.EXPO_PUBLIC_ENABLE_ANDROID_NATIVE_SCANNER === "1";
 
-type ResolvedPlaybackInputResult =
-  | { ok: true; sourceUrl: string; finalUrl: string; videoId: string }
-  | {
-      ok: false;
-      sourceUrl: string;
-      finalUrl: string | null;
-      title: string;
-      message: string;
-    };
-
 void SplashScreen.preventAutoHideAsync().catch(() => {
   // Ignore duplicate prevention requests during fast refresh.
 });
-
-function normalizeScannedInput(input: string) {
-  const trimmed = input.trim();
-  if (!trimmed) return trimmed;
-
-  if (/^[a-z][a-z\d+\-.]*:\/\//i.test(trimmed)) {
-    return trimmed;
-  }
-
-  if (/^[\w.-]+\.[a-z]{2,}(?::\d+)?(?:[/?#].*)?$/i.test(trimmed)) {
-    return `https://${trimmed}`;
-  }
-
-  return trimmed;
-}
-
-function normalizeHost(hostname: string) {
-  return hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
-}
-
-function getHostFromUrl(raw: string) {
-  try {
-    return normalizeHost(new URL(raw).hostname);
-  } catch {
-    return null;
-  }
-}
-
-function isHttpSchemeUrl(raw: string) {
-  return /^https?:\/\//i.test(raw);
-}
-
-function getIntentFallbackUrl(raw: string) {
-  const match = raw.match(/S\.browser_fallback_url=([^;]+)/);
-  if (!match?.[1]) return null;
-
-  try {
-    const decoded = decodeURIComponent(match[1]);
-    return isHttpSchemeUrl(decoded) ? decoded : null;
-  } catch {
-    return null;
-  }
-}
-
-// Builds a consistent failure payload for unsupported landing-page parsing results.
-function createLandingPageFailureResult(
-  sourceUrl: string,
-  finalUrl: string,
-  reason: "UNSUPPORTED_HOST" | "INVALID_HTML" | "NOT_FOUND" | "MULTIPLE",
-): ResolvedPlaybackInputResult {
-  return {
-    ok: false,
-    sourceUrl,
-    finalUrl,
-    title: "지원하지 않는 QR",
-    message: mapLandingPageResolveReasonToMessage(reason),
-  };
-}
-
-// Resolves scanned or replayed input into a playable YouTube video session.
-async function resolvePlaybackInput(
-  input: string,
-  startRedirectProbe: (sourceUrl: string) => Promise<string | null>,
-): Promise<ResolvedPlaybackInputResult> {
-  const sourceUrl = normalizeScannedInput(input);
-  let finalUrl: string | null = isHttpSchemeUrl(sourceUrl) ? sourceUrl : null;
-  let result = extractYouTubeId(sourceUrl);
-
-  console.log("[PLAYBACK] resolve input:", sourceUrl, result);
-
-  if (!result.ok && result.reason === "NOT_YOUTUBE") {
-    const sourceHost = getHostFromUrl(sourceUrl);
-    finalUrl = await resolveFinalUrl(sourceUrl);
-    console.log("[PLAYBACK] resolved final URL:", finalUrl);
-
-    if (!finalUrl) {
-      return {
-        ok: false,
-        sourceUrl,
-        finalUrl: null,
-        title: "네트워크 오류",
-        message: NETWORK_ERROR_MESSAGE,
-      };
-    }
-
-    result = extractYouTubeId(finalUrl);
-
-    if (!result.ok && result.reason === "NOT_YOUTUBE") {
-      const finalHost = getHostFromUrl(finalUrl);
-
-      if (isSupportedLandingPageHost(finalHost)) {
-        const landingPageResult = await resolveLandingPageYouTube(finalUrl);
-        console.log("[PLAYBACK] resolved landing page:", landingPageResult);
-
-        if (landingPageResult.ok) {
-          return {
-            ok: true,
-            sourceUrl,
-            finalUrl: landingPageResult.youtubeUrl,
-            videoId: landingPageResult.videoId,
-          };
-        }
-
-        if (landingPageResult.reason === "NETWORK") {
-          return {
-            ok: false,
-            sourceUrl,
-            finalUrl,
-            title: "네트워크 오류",
-            message: NETWORK_ERROR_MESSAGE,
-          };
-        }
-
-        return createLandingPageFailureResult(
-          sourceUrl,
-          finalUrl,
-          landingPageResult.reason,
-        );
-      }
-
-      const shouldUseWebViewFallback =
-        isHttpSchemeUrl(finalUrl) &&
-        sourceHost !== null &&
-        finalHost === sourceHost;
-
-      if (shouldUseWebViewFallback) {
-        const webViewResolvedUrl = await startRedirectProbe(finalUrl);
-        console.log("[PLAYBACK] resolved final URL via WebView:", webViewResolvedUrl);
-        if (webViewResolvedUrl) {
-          finalUrl = webViewResolvedUrl;
-          result = extractYouTubeId(finalUrl);
-        }
-      }
-    }
-  }
-
-  if (!result.ok) {
-    return {
-      ok: false,
-      sourceUrl,
-      finalUrl,
-      title: "지원하지 않는 QR",
-      message: mapExtractReasonToMessage(result.reason),
-    };
-  }
-
-  return {
-    ok: true,
-    sourceUrl,
-    finalUrl: finalUrl ?? sourceUrl,
-    videoId: result.videoId,
-  };
-}
 
 // Approximates the expo-camera zoom scale for non-Android fallback previews.
 function getExpoFallbackZoom(zoomLevel: number) {
@@ -284,15 +110,13 @@ function ScannerScreen() {
   const [isRearCameraSuggestionVisible, setIsRearCameraSuggestionVisible] =
     useState(false);
   const [isScannerHintCollapsed, setIsScannerHintCollapsed] = useState(false);
-  const [redirectProbe, setRedirectProbe] = useState<{
-    key: number;
-    sourceUrl: string;
-    sourceHost: string | null;
-  } | null>(null);
   const router = useRouter();
+  const isScreenFocused = useIsFocused();
   const { reservedBottomSpace } = useFloatingTabBarMetrics();
   const { height, width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const { redirectProbeElement, resolvePlaybackInput } =
+    usePlaybackInputResolver();
 
   const {
     consumeReplayRequest,
@@ -306,14 +130,6 @@ function ScannerScreen() {
   const scanLockedRef = useRef(false);
   const alertVisibleRef = useRef(false);
   const lastPrimaryCandidateRef = useRef<ScannerBarcodeCandidate | null>(null);
-  const redirectProbeCounterRef = useRef(0);
-  const redirectProbeResolverRef = useRef<((url: string | null) => void) | null>(
-    null,
-  );
-  const redirectProbeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const redirectProbeLatestUrlRef = useRef<string | null>(null);
   const tapFocusRequestCounterRef = useRef(0);
   const isCompactHeight =
     height < ANDROID_FLOATING_TAB_BAR_COMPACT_HEIGHT_THRESHOLD;
@@ -437,64 +253,6 @@ function ScannerScreen() {
     [],
   );
 
-  const settleRedirectProbe = useCallback((url: string | null) => {
-    if (redirectProbeTimeoutRef.current) {
-      clearTimeout(redirectProbeTimeoutRef.current);
-      redirectProbeTimeoutRef.current = null;
-    }
-
-    setRedirectProbe(null);
-
-    const resolver = redirectProbeResolverRef.current;
-    redirectProbeResolverRef.current = null;
-    redirectProbeLatestUrlRef.current = null;
-    resolver?.(url);
-  }, []);
-
-  const startRedirectProbe = useCallback(
-    (sourceUrl: string): Promise<string | null> => {
-      if (redirectProbeResolverRef.current) {
-        settleRedirectProbe(null);
-      }
-
-      return new Promise<string | null>((resolve) => {
-        redirectProbeResolverRef.current = resolve;
-        redirectProbeLatestUrlRef.current = sourceUrl;
-
-        const nextKey = redirectProbeCounterRef.current + 1;
-        redirectProbeCounterRef.current = nextKey;
-        setRedirectProbe({
-          key: nextKey,
-          sourceUrl,
-          sourceHost: getHostFromUrl(sourceUrl),
-        });
-
-        redirectProbeTimeoutRef.current = setTimeout(() => {
-          settleRedirectProbe(null);
-        }, REDIRECT_WEBVIEW_TIMEOUT_MS);
-      });
-    },
-    [settleRedirectProbe],
-  );
-
-  const handleRedirectProbeObservedUrl = useCallback(
-    (observedUrl?: string) => {
-      if (!redirectProbe || !observedUrl) return;
-
-      const trimmed = observedUrl.trim();
-      if (!trimmed) return;
-
-      redirectProbeLatestUrlRef.current = trimmed;
-      const observedHost = getHostFromUrl(trimmed);
-
-      if (!observedHost || !redirectProbe.sourceHost) return;
-      if (observedHost === redirectProbe.sourceHost) return;
-
-      settleRedirectProbe(trimmed);
-    },
-    [redirectProbe, settleRedirectProbe],
-  );
-
   useEffect(() => {
     const timeout = setTimeout(() => {
       void SplashScreen.hideAsync().catch(() => {
@@ -506,18 +264,12 @@ function ScannerScreen() {
   }, []);
 
   useEffect(() => {
-    return () => {
-      if (redirectProbeTimeoutRef.current) {
-        clearTimeout(redirectProbeTimeoutRef.current);
-      }
-      if (redirectProbeResolverRef.current) {
-        redirectProbeResolverRef.current(null);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!permission?.granted || !isFrontCamera || isLoadingOverlayVisible) {
+    if (
+      !isScreenFocused ||
+      !permission?.granted ||
+      !isFrontCamera ||
+      isLoadingOverlayVisible
+    ) {
       setIsRearCameraSuggestionVisible(false);
       return;
     }
@@ -528,7 +280,7 @@ function ScannerScreen() {
     }, FRONT_CAMERA_IDLE_SUGGESTION_DELAY_MS);
 
     return () => clearTimeout(timeout);
-  }, [isFrontCamera, isLoadingOverlayVisible, permission?.granted]);
+  }, [isFrontCamera, isLoadingOverlayVisible, isScreenFocused, permission?.granted]);
 
   useEffect(() => {
     if (!highlightFrame) {
@@ -570,7 +322,7 @@ function ScannerScreen() {
       scanLockedRef.current = true;
       setIsLoadingOverlayVisible(true);
 
-      const result = await resolvePlaybackInput(input, startRedirectProbe);
+      const result = await resolvePlaybackInput(input);
 
       if (!result.ok) {
         recordHistoryResult({
@@ -605,7 +357,7 @@ function ScannerScreen() {
         },
       });
     },
-    [recordHistoryResult, router, showBlockingAlert, startRedirectProbe],
+    [recordHistoryResult, resolvePlaybackInput, router, showBlockingAlert],
   );
 
   useEffect(() => {
@@ -833,7 +585,7 @@ function ScannerScreen() {
       <View style={styles.previewArea} onLayout={handlePreviewLayout}>
         {IS_ANDROID_NATIVE_SCANNER ? (
           <AndroidQrScannerView
-            active={!isLoadingOverlayVisible}
+            active={isScreenFocused && !isLoadingOverlayVisible}
             facing={scannerFacing}
             onBarcodeScanned={handleNativeBarcodeScanned}
             onFocusStateChanged={handleFocusStateChanged}
@@ -845,6 +597,7 @@ function ScannerScreen() {
           />
         ) : (
           <CameraView
+            active={isScreenFocused && !isLoadingOverlayVisible}
             facing={scannerFacing}
             mirror={isFrontCamera}
             barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
@@ -1067,42 +820,7 @@ function ScannerScreen() {
         </View>
       </View>
 
-      {redirectProbe ? (
-        <WebView
-          key={`redirect-probe-${redirectProbe.key}`}
-          source={{ uri: redirectProbe.sourceUrl }}
-          originWhitelist={["*"]}
-          style={styles.hiddenRedirectWebView}
-          onShouldStartLoadWithRequest={(request) => {
-            const nextUrl = request.url ?? "";
-            if (isHttpSchemeUrl(nextUrl)) {
-              handleRedirectProbeObservedUrl(nextUrl);
-              return true;
-            }
-
-            const fallbackUrl = getIntentFallbackUrl(nextUrl);
-            if (fallbackUrl) {
-              handleRedirectProbeObservedUrl(fallbackUrl);
-            }
-
-            return false;
-          }}
-          onNavigationStateChange={(state) => {
-            handleRedirectProbeObservedUrl(state.url);
-          }}
-          onLoadEnd={() => {
-            handleRedirectProbeObservedUrl(
-              redirectProbeLatestUrlRef.current ?? undefined,
-            );
-          }}
-          onError={() => settleRedirectProbe(null)}
-          onHttpError={() => settleRedirectProbe(null)}
-          javaScriptEnabled
-          domStorageEnabled
-          javaScriptCanOpenWindowsAutomatically={false}
-          setSupportMultipleWindows={false}
-        />
-      ) : null}
+      {redirectProbeElement}
 
       {loadingOverlay}
     </SafeAreaView>
@@ -1367,13 +1085,5 @@ const styles = StyleSheet.create({
     marginTop: 6,
     color: "#D1D5DB",
     fontSize: 14,
-  },
-  hiddenRedirectWebView: {
-    position: "absolute",
-    width: 1,
-    height: 1,
-    opacity: 0,
-    top: -100,
-    left: -100,
   },
 });

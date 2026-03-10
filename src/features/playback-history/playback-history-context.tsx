@@ -22,6 +22,7 @@ type RecordHistoryResultInput = {
   resolvedUrl: string | null;
   status: HistoryStatus;
   incrementPlayCount: boolean;
+  preserveUpdatedAt?: boolean;
 };
 
 type PlaybackHistoryContextValue = {
@@ -71,14 +72,19 @@ function upsertHistoryEntry(
     lastStatus: input.status,
     playCount:
       (targetEntry?.playCount ?? 0) + (input.incrementPlayCount ? 1 : 0),
-    updatedAt: Date.now(),
+    updatedAt:
+      input.preserveUpdatedAt && targetEntry
+        ? targetEntry.updatedAt
+        : Date.now(),
   };
   const nextEntries =
     targetIndex >= 0
       ? entries.map((entry, index) => (index === targetIndex ? nextEntry : entry))
       : [...entries, nextEntry];
 
-  nextEntries.sort((left, right) => right.updatedAt - left.updatedAt);
+  if (!(input.preserveUpdatedAt && targetEntry)) {
+    nextEntries.sort((left, right) => right.updatedAt - left.updatedAt);
+  }
 
   return { entries: nextEntries, historyId };
 }

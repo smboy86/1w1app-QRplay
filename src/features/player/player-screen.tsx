@@ -61,11 +61,14 @@ export function PlayerScreen() {
   const { recordHistoryResult } = usePlaybackHistory();
   const params = useLocalSearchParams<{
     historyId?: string | string[];
+    preserveHistoryPosition?: string | string[];
     resolvedUrl?: string | string[];
     sourceUrl?: string | string[];
     videoId?: string | string[];
   }>();
   const historyId = readSearchParam(params.historyId);
+  const preserveHistoryPosition =
+    readSearchParam(params.preserveHistoryPosition) === "1";
   const resolvedUrl = readSearchParam(params.resolvedUrl);
   const sourceUrl = readSearchParam(params.sourceUrl);
   const videoId = readSearchParam(params.videoId);
@@ -93,7 +96,17 @@ export function PlayerScreen() {
     [],
   );
 
-  // Dismisses the player route back to the scanner tab and optionally stops playback first.
+  // 플레이어를 띄운 이전 화면으로 안전하게 복귀한다.
+  const dismissPlayer = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace("/");
+  }, [router]);
+
+  // Dismisses the player route back to the previous screen and optionally stops playback first.
   const closePlayer = useCallback(
     (shouldStopPlayback = true) => {
       if (shouldStopPlayback) {
@@ -101,17 +114,18 @@ export function PlayerScreen() {
       }
 
       setIsLoadingOverlayVisible(false);
-      router.dismissTo("/");
+      dismissPlayer();
     },
-    [router, sendPlayerCommand],
+    [dismissPlayer, sendPlayerCommand],
   );
 
-  // Records a playback failure, shows the blocking alert, and returns to the scanner after confirmation.
+  // Records a playback failure, shows the blocking alert, and returns after confirmation.
   const handlePlaybackFailure = useCallback(
     (message: string) => {
       if (historyId && sourceUrl) {
         recordHistoryResult({
           historyId,
+          preserveUpdatedAt: preserveHistoryPosition,
           sourceUrl,
           resolvedUrl,
           status: "failure",
@@ -135,7 +149,7 @@ export function PlayerScreen() {
 
         dismissed = true;
         alertVisibleRef.current = false;
-        router.dismissTo("/");
+        dismissPlayer();
       };
 
       Alert.alert("재생 오류", message, [{ text: "확인", onPress: dismissAlert }], {
@@ -143,7 +157,14 @@ export function PlayerScreen() {
         onDismiss: dismissAlert,
       });
     },
-    [historyId, recordHistoryResult, resolvedUrl, router, sourceUrl],
+    [
+      dismissPlayer,
+      historyId,
+      preserveHistoryPosition,
+      recordHistoryResult,
+      resolvedUrl,
+      sourceUrl,
+    ],
   );
 
   useEffect(() => {
@@ -151,8 +172,8 @@ export function PlayerScreen() {
       return;
     }
 
-    router.dismissTo("/");
-  }, [isPlaybackSessionReady, router]);
+    dismissPlayer();
+  }, [dismissPlayer, isPlaybackSessionReady]);
 
   useEffect(() => {
     if (!isPlaybackSessionReady || playerUiState !== "loading") {
@@ -373,11 +394,11 @@ export function PlayerScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: "rgba(2, 6, 23, 0.88)",
   },
   blank: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: "rgba(2, 6, 23, 0.88)",
   },
   topToolbar: {
     position: "absolute",

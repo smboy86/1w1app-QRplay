@@ -1,6 +1,8 @@
+import { useCallback, useState } from "react";
 import { useRouter } from "expo-router";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -9,7 +11,10 @@ import {
 } from "react-native";
 
 import { useFloatingTabBarMetrics } from "../../src/features/floating-tab-bar/floating-tab-bar-context";
+import { usePlaybackInputResolver } from "../../src/features/player/use-playback-input-resolver";
 import { usePlaybackHistory } from "../../src/features/playback-history/playback-history-context";
+import { extractYouTubeId } from "../../src/lib/extractYouTubeId";
+import type { PlaybackHistoryEntry } from "../../src/lib/types";
 
 // Formats the last interaction time for a history card subtitle.
 function formatHistoryTimestamp(timestamp: number): string {
@@ -21,12 +26,95 @@ function formatHistoryTimestamp(timestamp: number): string {
   });
 }
 
+// 저장된 히스토리 정보로 즉시 재생 가능한 세션을 찾는다.
+function getCachedPlaybackTarget(entry: PlaybackHistoryEntry): {
+  resolvedUrl: string;
+  videoId: string;
+} | null {
+  const playbackUrl = entry.resolvedUrl ?? entry.sourceUrl;
+  const result = extractYouTubeId(playbackUrl);
+
+  if (!result.ok) {
+    return null;
+  }
+
+  return {
+    resolvedUrl: playbackUrl,
+    videoId: result.videoId,
+  };
+}
+
 // Renders the redesigned playback history list for the second tab.
 export default function HistoryScreen() {
   const router = useRouter();
   const { reservedBottomSpace } = useFloatingTabBarMetrics();
-  const { history, isHistoryReady, requestReplay } = usePlaybackHistory();
+  const { history, isHistoryReady, recordHistoryResult } = usePlaybackHistory();
+  const { redirectProbeElement, resolvePlaybackInput } =
+    usePlaybackInputResolver();
+  const [isReplayLoading, setIsReplayLoading] = useState(false);
   const totalCount = history.length;
+
+  // 히스토리 항목을 현재 화면 위의 공통 플레이어로 다시 재생한다.
+  const handleHistoryReplay = useCallback(
+    async (entry: PlaybackHistoryEntry) => {
+      if (isReplayLoading) {
+        return;
+      }
+
+      setIsReplayLoading(true);
+
+      try {
+        const cachedTarget = getCachedPlaybackTarget(entry);
+        const result = cachedTarget
+          ? {
+              ok: true as const,
+              sourceUrl: entry.sourceUrl,
+              finalUrl: cachedTarget.resolvedUrl,
+              videoId: cachedTarget.videoId,
+            }
+          : await resolvePlaybackInput(entry.sourceUrl);
+
+        if (!result.ok) {
+          recordHistoryResult({
+            historyId: entry.id,
+            sourceUrl: result.sourceUrl,
+            resolvedUrl: result.finalUrl,
+            status: "failure",
+            incrementPlayCount: false,
+            preserveUpdatedAt: true,
+          });
+          setIsReplayLoading(false);
+          Alert.alert(result.title, result.message);
+          return;
+        }
+
+        const nextHistoryId = recordHistoryResult({
+          historyId: entry.id,
+          sourceUrl: result.sourceUrl,
+          resolvedUrl: result.finalUrl,
+          status: "success",
+          incrementPlayCount: true,
+          preserveUpdatedAt: true,
+        });
+
+        setIsReplayLoading(false);
+        router.push({
+          pathname: "/player",
+          params: {
+            historyId: nextHistoryId,
+            preserveHistoryPosition: "1",
+            resolvedUrl: result.finalUrl,
+            sourceUrl: result.sourceUrl,
+            videoId: result.videoId,
+          },
+        });
+      } catch {
+        setIsReplayLoading(false);
+        Alert.alert("재생 오류", "영상을 다시 준비하지 못했습니다.");
+      }
+    },
+    [isReplayLoading, recordHistoryResult, resolvePlaybackInput, router],
+  );
 
   return (
     <View style={styles.screen}>
@@ -51,8 +139,8 @@ export default function HistoryScreen() {
               QR스캔 히스토리
             </Text>
             <Text selectable style={styles.description}>
-              최근 QR 재생 주소를 순서대로 모아두었습니다. 카드를 터치하면 스캔
-              탭에서 같은 재생 방식으로 다시 실행됩니다.
+              최근 QR 재생 주소를 순서대로 모아두었습니다. 카드를 터치하면 현재
+              화면 위에서 같은 플레이어로 바로 다시 실행됩니다.
             </Text>
           </View>
         }
@@ -88,13 +176,14 @@ export default function HistoryScreen() {
 
           return (
             <Pressable
+              disabled={isReplayLoading}
               onPress={() => {
-                requestReplay(item.id);
-                router.navigate("/");
+                void handleHistoryReplay(item);
               }}
               style={({ pressed }) => [
                 styles.card,
                 isSuccess ? styles.cardSuccess : styles.cardFailure,
+                isReplayLoading && styles.cardDisabled,
                 pressed && styles.cardPressed,
               ]}
             >
@@ -176,6 +265,22 @@ export default function HistoryScreen() {
           );
         }}
       />
+
+      {redirectProbeElement}
+
+      {isReplayLoading ? (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingCard}>
+            <ActivityIndicator size="large" color="#4E8EF7" />
+            <Text selectable style={styles.loadingTitle}>
+              영상 준비 중
+            </Text>
+            <Text selectable style={styles.loadingDescription}>
+              저장된 재생 주소를 다시 확인하고 있어요.
+            </Text>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -299,6 +404,9 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.985 }],
     opacity: 0.94,
   },
+  cardDisabled: {
+    opacity: 0.72,
+  },
   cardAccent: {
     position: "absolute",
     top: -16,
@@ -418,5 +526,35 @@ const styles = StyleSheet.create({
     color: "#70808F",
     fontSize: 12,
     fontWeight: "700",
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(236, 242, 248, 0.72)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 30,
+  },
+  loadingCard: {
+    minWidth: 240,
+    paddingHorizontal: 22,
+    paddingVertical: 20,
+    borderRadius: 28,
+    borderCurve: "continuous",
+    backgroundColor: "rgba(255, 255, 255, 0.94)",
+    alignItems: "center",
+    boxShadow: "0 18px 44px rgba(61, 82, 99, 0.14)",
+  },
+  loadingTitle: {
+    marginTop: 12,
+    color: "#183141",
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  loadingDescription: {
+    marginTop: 6,
+    color: "#647786",
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: "center",
   },
 });
