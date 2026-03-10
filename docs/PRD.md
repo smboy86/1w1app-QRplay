@@ -1,109 +1,82 @@
-# QRPlay MVP PRD
+# QRPlay Android PRD
 
 ## 1. Goal
-- Build a child-safe QR YouTube player with the fixed flow:
-  - `QR scan -> play one video -> return to scanner on end/error`
-- Target framework:
-  - React Native + Expo SDK 55 (`blank-typescript`)
-- Target platforms:
-  - iOS + Android (same feature scope)
+- Build an Android-focused QR YouTube player with the fixed flow:
+  - `QR scan -> resolve one playable video -> play -> return to scanner on end/error`
+- Keep the existing direct YouTube and redirect handling intact.
+- Add support for supported landing pages that contain a YouTube target without redirecting.
 
 ## 2. Scope
-### In Scope (MVP)
-- QR scanner with camera permission handling
-- Parse direct YouTube URL/ID
-- Allow only single-video URL/ID formats
-- Play video via WebView + YouTube IFrame API
-- Minimal controls: play/pause and exit
-- Return to scanner on video end/error
-- Unit tests for parser and error mapping
+### In Scope
+- Android QR scanner with camera permission handling
+- Direct single-video YouTube URL/ID parsing
+- Redirect resolution for QR destinations that bounce to a final URL
+- `site.naver.com` landing-page HTML parsing when the page itself contains the YouTube target
+- Single-video playback via `react-native-webview` + YouTube IFrame API
+- Session-only playback history for original and resolved URLs
 
-### Out of Scope (MVP)
-- Backend content mapping (`kidqr://...` lookup API)
+### Out of Scope
+- iOS-specific implementation changes
+- Generic web scraping for arbitrary domains
 - Playlist/channel/search browsing
-- Admin CMS, account/login
-- Background/offline playback
+- Candidate selection UI when multiple videos are present
+- Backend content mapping or remote storage
 
 ## 3. Functional Requirements
-- FR-1: Show camera permission request when not granted.
-- FR-2: Scanner mode reads only QR.
-- FR-3: Parse only single YouTube video IDs.
-- FR-4: Allowed formats:
+- FR-1: Scanner mode reads QR codes only and prevents duplicate scans while resolving.
+- FR-2: Accept direct single-video YouTube inputs:
   - Raw 11-char video ID
   - `youtu.be/{id}`
   - `youtube.com/watch?v={id}`
   - `youtube.com/embed/{id}`
   - `youtube.com/shorts/{id}`
-- FR-5: Reject non-single-video URLs (playlist/channel/search/live page) and return to scanner.
-- FR-6: Player built on `react-native-webview` + YouTube IFrame API.
-- FR-7: On `ENDED`, unmount player and return to scanner immediately.
-- FR-8: Provide only play/pause and exit controls.
-- FR-9: Map YouTube errors (5/100/101/150/153) to user-facing messages.
+- FR-3: If the scanned URL is not directly playable, resolve its final URL using existing redirect logic.
+- FR-4: If the resolved URL still points to `site.naver.com`, fetch the landing-page HTML and parse `__NEXT_DATA__`.
+- FR-5: Walk all string fields inside `__NEXT_DATA__` recursively.
+- FR-6: Treat `videoVid` as the strongest signal and convert it to a canonical YouTube watch URL.
+- FR-7: If no valid `videoVid` exists, inspect embedded YouTube URLs and allow playback only when they resolve to exactly one unique video ID.
+- FR-8: If multiple unique YouTube video IDs are found, reject the QR and show a single-video-only message.
+- FR-9: If no playable YouTube target is found in the page, reject the QR with an unsupported-page message.
+- FR-10: If HTML fetch fails, show the existing network error message.
+- FR-11: Supported landing-page parsing must skip the hidden redirect `WebView` probe.
 
-## 4. Non-Functional Requirements
-- NFR-1: Prevent duplicate scan triggers by lock.
-- NFR-2: Minimize YouTube UI with player params:
-  - `controls=0`, `disablekb=1`, `fs=0`, `rel=0`, `playsinline=1`, `enablejsapi=1`, `iv_load_policy=3`
-- NFR-3: Reset WebView by changing `key` each session.
-- NFR-4: Provide clear offline/network failure message.
-
-## 5. State Model
-- `scanner`
-- `playerLoading`
-- `playing`
-- `paused`
-- `blocked` (autoplay blocked)
-- `error` (show message, then scanner)
-
-## 6. Technical Design
-### Files
-- `App.tsx`
-- `src/lib/types.ts`
-- `src/lib/extractYouTubeId.ts`
-- `src/lib/buildYoutubeHtml.ts`
-- `src/lib/mapYouTubeError.ts`
-- `src/lib/extractYouTubeId.test.ts`
-- `src/lib/mapYouTubeError.test.ts`
-
-### Contracts
-- `ExtractResult`:
-  - `{ ok: true, videoId }`
-  - `{ ok: false, reason: "NOT_YOUTUBE" | "NOT_SINGLE_VIDEO" | "INVALID_ID" }`
-- WebView bridge message types:
+## 4. Technical Design
+- Scanner resolution order:
+  - Direct YouTube parse
+  - Redirect resolution
+  - Supported landing-page parse
+  - Existing player entry
+- Internal contract:
+  - `resolveLandingPageYouTube(url)` -> `{ ok: true, youtubeUrl, videoId } | { ok: false, reason }`
+  - `reason` in `"UNSUPPORTED_HOST" | "NETWORK" | "INVALID_HTML" | "NOT_FOUND" | "MULTIPLE"`
+- History behavior:
+  - `sourceUrl` keeps the original scanned landing-page URL
+  - `resolvedUrl` stores the extracted playable YouTube URL
+- WebView player bridge remains unchanged:
   - `ready`, `playing`, `paused`, `ended`, `autoplayBlocked`, `error`, `state`
 
-## 7. Error Handling
+## 5. Error Handling And Validation
 - Camera permission denied:
-  - show permission helper UI + retry button
-- Unsupported QR data:
-  - show validation alert + keep scanner active
-- YouTube embed blocked (101/150):
-  - show error + return to scanner
-- Network unstable/offline:
-  - show network error + return to scanner
+  - Show permission helper UI with retry
+- Direct YouTube parse failure:
+  - Show existing validation message
+- Landing page network failure:
+  - Show existing network error message
+- Landing page without playable target:
+  - Show page-level unsupported message
+- Landing page with multiple videos:
+  - Show single-video-only message
+- YouTube embed blocked or playback failure:
+  - Keep existing playback error handling
 
-## 8. Test Plan
-### Unit Tests
-- `extractYouTubeId`
-  - valid IDs/URLs
-  - invalid domain
-  - playlist/channel/search/live page rejection
-- `mapYouTubeError`
-  - known code mapping
-  - fallback message
-
-### Manual Tests (iOS/Android)
-- first-launch permission denied/allow flow
-- normal scan -> play -> ended -> scanner
-- pause/resume/exit controls
-- embed-disabled video handling
-- duplicate scan prevention
-- offline playback failure handling
-
-## 9. Definition of Done
-- Single-video QR always plays.
-- Non-single-video URL never plays.
-- Ended event returns to scanner quickly (target within ~1s perceived).
-- iOS/Android both pass manual checklist.
-- Unit tests pass.
-- This PRD and implementation stay aligned.
+## 6. Test Plan
+- Static verification:
+  - `npm run typecheck`
+- Android manual verification:
+  - Existing direct YouTube QR still plays
+  - Redirect-based QR still resolves and plays
+  - `https://m.site.naver.com/1QyHZ` resolves to video `oS4Rm61pJ9k`
+  - Supported landing page with no YouTube candidate shows unsupported-page alert
+  - Supported landing page with multiple unique YouTube videos shows single-video-only alert
+  - Landing-page fetch failure shows network error
+  - History replay re-resolves the original landing-page URL and plays the same video

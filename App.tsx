@@ -34,6 +34,11 @@ import {
   mapYouTubeError,
   NETWORK_ERROR_MESSAGE,
 } from "./src/lib/mapYouTubeError";
+import {
+  isSupportedLandingPageHost,
+  mapLandingPageResolveReasonToMessage,
+  resolveLandingPageYouTube,
+} from "./src/lib/resolveLandingPageYouTube";
 import { resolveFinalUrl } from "./src/lib/resolveRedirectUrl";
 import type { BridgeMessage, Mode, PlayerUiState } from "./src/lib/types";
 
@@ -107,6 +112,21 @@ function getIntentFallbackUrl(raw: string): string | null {
   }
 }
 
+// Builds a consistent failure payload for unsupported landing-page parsing results.
+function createLandingPageFailureResult(
+  sourceUrl: string,
+  finalUrl: string,
+  reason: "UNSUPPORTED_HOST" | "INVALID_HTML" | "NOT_FOUND" | "MULTIPLE",
+): ResolvedPlaybackInputResult {
+  return {
+    ok: false,
+    sourceUrl,
+    finalUrl,
+    title: "지원하지 않는 QR",
+    message: mapLandingPageResolveReasonToMessage(reason),
+  };
+}
+
 // Resolves scanned or replayed input into a playable YouTube video session.
 async function resolvePlaybackInput(
   input: string,
@@ -123,19 +143,6 @@ async function resolvePlaybackInput(
     finalUrl = await resolveFinalUrl(sourceUrl);
     console.log("[PLAYBACK] resolved final URL:", finalUrl);
 
-    const finalHost = finalUrl ? getHostFromUrl(finalUrl) : null;
-    const shouldUseWebViewFallback =
-      isHttpSchemeUrl(finalUrl ?? sourceUrl) &&
-      (!finalUrl || (sourceHost !== null && finalHost === sourceHost));
-
-    if (shouldUseWebViewFallback) {
-      const webViewResolvedUrl = await startRedirectProbe(finalUrl ?? sourceUrl);
-      console.log("[PLAYBACK] resolved final URL via WebView:", webViewResolvedUrl);
-      if (webViewResolvedUrl) {
-        finalUrl = webViewResolvedUrl;
-      }
-    }
-
     if (!finalUrl) {
       return {
         ok: false,
@@ -147,6 +154,54 @@ async function resolvePlaybackInput(
     }
 
     result = extractYouTubeId(finalUrl);
+
+    if (!result.ok && result.reason === "NOT_YOUTUBE") {
+      const finalHost = getHostFromUrl(finalUrl);
+
+      if (isSupportedLandingPageHost(finalHost)) {
+        const landingPageResult = await resolveLandingPageYouTube(finalUrl);
+        console.log("[PLAYBACK] resolved landing page:", landingPageResult);
+
+        if (landingPageResult.ok) {
+          return {
+            ok: true,
+            sourceUrl,
+            finalUrl: landingPageResult.youtubeUrl,
+            videoId: landingPageResult.videoId,
+          };
+        }
+
+        if (landingPageResult.reason === "NETWORK") {
+          return {
+            ok: false,
+            sourceUrl,
+            finalUrl,
+            title: "네트워크 오류",
+            message: NETWORK_ERROR_MESSAGE,
+          };
+        }
+
+        return createLandingPageFailureResult(
+          sourceUrl,
+          finalUrl,
+          landingPageResult.reason,
+        );
+      }
+
+      const shouldUseWebViewFallback =
+        isHttpSchemeUrl(finalUrl) &&
+        sourceHost !== null &&
+        finalHost === sourceHost;
+
+      if (shouldUseWebViewFallback) {
+        const webViewResolvedUrl = await startRedirectProbe(finalUrl);
+        console.log("[PLAYBACK] resolved final URL via WebView:", webViewResolvedUrl);
+        if (webViewResolvedUrl) {
+          finalUrl = webViewResolvedUrl;
+          result = extractYouTubeId(finalUrl);
+        }
+      }
+    }
   }
 
   if (!result.ok) {

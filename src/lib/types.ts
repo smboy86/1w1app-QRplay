@@ -17,6 +17,17 @@ export type ExtractResult =
   | { ok: true; videoId: string }
   | { ok: false; reason: ExtractErrorReason };
 
+export type LandingPageResolveReason =
+  | "UNSUPPORTED_HOST"
+  | "NETWORK"
+  | "INVALID_HTML"
+  | "NOT_FOUND"
+  | "MULTIPLE";
+
+export type LandingPageResolveResult =
+  | { ok: true; youtubeUrl: string; videoId: string }
+  | { ok: false; reason: LandingPageResolveReason };
+
 export type HistoryStatus = "success" | "failure";
 
 export type PlaybackHistoryEntry = {
