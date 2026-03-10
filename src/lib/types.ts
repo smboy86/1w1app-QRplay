@@ -1,5 +1,3 @@
-export type Mode = "scanner" | "player";
-
 export type PlayerUiState = "idle" | "loading" | "playing" | "paused" | "blocked" | "error";
 
 export type BridgeMessage =

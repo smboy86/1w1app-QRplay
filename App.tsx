@@ -1,7 +1,6 @@
 import React, {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -9,7 +8,6 @@ import {
   ActivityIndicator,
   Alert,
   Button,
-  Platform,
   Pressable,
   SafeAreaView,
   StyleSheet,
@@ -17,6 +15,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { useFocusEffect, useRouter } from "expo-router";
 import {
   CameraView,
   type BarcodeScanningResult,
@@ -24,37 +23,25 @@ import {
 } from "expo-camera";
 import * as SplashScreen from "expo-splash-screen";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { WebView, type WebViewMessageEvent } from "react-native-webview";
+import { WebView } from "react-native-webview";
 
-import {
-  useFloatingTabBarMetrics,
-  useFloatingTabBarVisibility,
-} from "./src/features/floating-tab-bar/floating-tab-bar-context";
+import { useFloatingTabBarMetrics } from "./src/features/floating-tab-bar/floating-tab-bar-context";
 import { ANDROID_FLOATING_TAB_BAR_COMPACT_HEIGHT_THRESHOLD } from "./src/features/floating-tab-bar/floating-tab-bar-constants";
 import { usePlaybackHistory } from "./src/features/playback-history/playback-history-context";
-import { buildYoutubeHtml } from "./src/lib/buildYoutubeHtml";
 import {
   extractYouTubeId,
   mapExtractReasonToMessage,
 } from "./src/lib/extractYouTubeId";
-import {
-  mapYouTubeError,
-  NETWORK_ERROR_MESSAGE,
-} from "./src/lib/mapYouTubeError";
+import { NETWORK_ERROR_MESSAGE } from "./src/lib/mapYouTubeError";
 import {
   isSupportedLandingPageHost,
   mapLandingPageResolveReasonToMessage,
   resolveLandingPageYouTube,
 } from "./src/lib/resolveLandingPageYouTube";
 import { resolveFinalUrl } from "./src/lib/resolveRedirectUrl";
-import type { BridgeMessage, Mode, PlayerUiState } from "./src/lib/types";
 
-const APP_ORIGIN = "https://qrplay.app.local";
 const INITIAL_SPLASH_DELAY_MS = 3000;
-const PLAYER_READY_TIMEOUT_MS = 15000;
 const REDIRECT_WEBVIEW_TIMEOUT_MS = 9000;
-// "player": block only WebView area, "app": block entire app while video is playing.
-const PLAYBACK_TOUCH_BLOCK_SCOPE: "player" | "app" = "player";
 
 type ResolvedPlaybackInputResult =
   | { ok: true; sourceUrl: string; finalUrl: string; videoId: string }
@@ -64,12 +51,6 @@ type ResolvedPlaybackInputResult =
       finalUrl: string | null;
       title: string;
       message: string;
-    };
-
-type ActivePlaybackHistory = {
-  historyId: string;
-  sourceUrl: string;
-  resolvedUrl: string | null;
 };
 
 void SplashScreen.preventAutoHideAsync().catch(() => {
@@ -229,22 +210,18 @@ async function resolvePlaybackInput(
   };
 }
 
-// Hosts the scanner and player flow used by the first tab.
-function ScannerPlayerScreen() {
+// Hosts the QR scanner flow used by the first tab.
+function ScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
-  const [mode, setMode] = useState<Mode>("scanner");
   const [scannerFacing, setScannerFacing] = useState<"back" | "front">("front");
-  const [videoId, setVideoId] = useState<string | null>(null);
-  const [playerUiState, setPlayerUiState] = useState<PlayerUiState>("idle");
   const [isLoadingOverlayVisible, setIsLoadingOverlayVisible] = useState(false);
-  const [sessionKey, setSessionKey] = useState(0);
   const [redirectProbe, setRedirectProbe] = useState<{
     key: number;
     sourceUrl: string;
     sourceHost: string | null;
   } | null>(null);
+  const router = useRouter();
   const { reservedBottomSpace } = useFloatingTabBarMetrics();
-  const { setVisible } = useFloatingTabBarVisibility();
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -256,7 +233,6 @@ function ScannerPlayerScreen() {
 
   const scanLockedRef = useRef(false);
   const alertVisibleRef = useRef(false);
-  const webViewRef = useRef<WebView>(null);
   const redirectProbeCounterRef = useRef(0);
   const redirectProbeResolverRef = useRef<((url: string | null) => void) | null>(
     null,
@@ -265,28 +241,17 @@ function ScannerPlayerScreen() {
     null,
   );
   const redirectProbeLatestUrlRef = useRef<string | null>(null);
-  const activePlaybackHistoryRef = useRef<ActivePlaybackHistory | null>(null);
-
-  const html = useMemo(() => {
-    if (!videoId) return "";
-    return buildYoutubeHtml(videoId, APP_ORIGIN, true);
-  }, [videoId, sessionKey]);
   const isCompactHeight =
     height < ANDROID_FLOATING_TAB_BAR_COMPACT_HEIGHT_THRESHOLD;
   const cameraFacingButtonTop = Math.max(isCompactHeight ? 12 : 16, insets.top + 8);
   const scannerHintBottom = Math.max(24, reservedBottomSpace);
 
-  useEffect(() => {
-    if (process.env.EXPO_OS !== "android") {
-      return;
-    }
-
-    setVisible(mode !== "player");
-
-    return () => {
-      setVisible(true);
-    };
-  }, [mode, setVisible]);
+  useFocusEffect(
+    useCallback(() => {
+      setIsLoadingOverlayVisible(false);
+      scanLockedRef.current = false;
+    }, []),
+  );
 
   const showBlockingAlert = useCallback(
     (title: string, message: string, onClose?: () => void) => {
@@ -310,16 +275,6 @@ function ScannerPlayerScreen() {
     },
     [],
   );
-
-  const resetToScanner = useCallback((keepScanLocked = false) => {
-    activePlaybackHistoryRef.current = null;
-    setMode("scanner");
-    setVideoId(null);
-    setPlayerUiState("idle");
-    setIsLoadingOverlayVisible(false);
-    setSessionKey((value) => value + 1);
-    scanLockedRef.current = keepScanLocked;
-  }, []);
 
   const settleRedirectProbe = useCallback((url: string | null) => {
     if (redirectProbeTimeoutRef.current) {
@@ -400,46 +355,6 @@ function ScannerPlayerScreen() {
     };
   }, []);
 
-  const handlePlaybackFailure = useCallback(
-    (message: string) => {
-      if (activePlaybackHistoryRef.current) {
-        recordHistoryResult({
-          historyId: activePlaybackHistoryRef.current.historyId,
-          sourceUrl: activePlaybackHistoryRef.current.sourceUrl,
-          resolvedUrl: activePlaybackHistoryRef.current.resolvedUrl,
-          status: "failure",
-          incrementPlayCount: false,
-        });
-        activePlaybackHistoryRef.current = null;
-      }
-
-      if (mode !== "player") return;
-      console.log("[PLAYER] playback failure:", message);
-      setPlayerUiState("error");
-      resetToScanner(true);
-      showBlockingAlert("재생 오류", message, () => {
-        scanLockedRef.current = false;
-      });
-    },
-    [mode, recordHistoryResult, resetToScanner, showBlockingAlert],
-  );
-
-  useEffect(() => {
-    if (mode !== "player" || playerUiState !== "loading") return;
-
-    const timeout = setTimeout(() => {
-      handlePlaybackFailure(NETWORK_ERROR_MESSAGE);
-    }, PLAYER_READY_TIMEOUT_MS);
-
-    return () => clearTimeout(timeout);
-  }, [handlePlaybackFailure, mode, playerUiState]);
-
-  useEffect(() => {
-    if (mode === "player" && playerUiState !== "loading") {
-      setIsLoadingOverlayVisible(false);
-    }
-  }, [mode, playerUiState]);
-
   // Processes scanned or replayed input into a player session and logs history.
   const handlePlaybackInput = useCallback(
     async (input: string, historyId?: string) => {
@@ -447,7 +362,6 @@ function ScannerPlayerScreen() {
 
       scanLockedRef.current = true;
       setIsLoadingOverlayVisible(true);
-      activePlaybackHistoryRef.current = null;
 
       const result = await resolvePlaybackInput(input, startRedirectProbe);
 
@@ -473,21 +387,22 @@ function ScannerPlayerScreen() {
         incrementPlayCount: true,
       });
 
-      activePlaybackHistoryRef.current = {
-        historyId: nextHistoryId,
-        sourceUrl: result.sourceUrl,
-        resolvedUrl: result.finalUrl,
-      };
-      setVideoId(result.videoId);
-      setPlayerUiState("loading");
-      setMode("player");
+      setIsLoadingOverlayVisible(false);
+      router.push({
+        pathname: "/player",
+        params: {
+          historyId: nextHistoryId,
+          resolvedUrl: result.finalUrl,
+          sourceUrl: result.sourceUrl,
+          videoId: result.videoId,
+        },
+      });
     },
-    [recordHistoryResult, showBlockingAlert, startRedirectProbe],
+    [recordHistoryResult, router, showBlockingAlert, startRedirectProbe],
   );
 
   useEffect(() => {
     if (!pendingReplayRequest) return;
-    if (mode !== "scanner") return;
     if (scanLockedRef.current || alertVisibleRef.current) return;
 
     consumeReplayRequest(pendingReplayRequest.requestId);
@@ -495,59 +410,10 @@ function ScannerPlayerScreen() {
       pendingReplayRequest.sourceUrl,
       pendingReplayRequest.historyId,
     );
-  }, [consumeReplayRequest, handlePlaybackInput, mode, pendingReplayRequest]);
+  }, [consumeReplayRequest, handlePlaybackInput, pendingReplayRequest]);
 
   const handleBarcodeScanned = ({ data }: BarcodeScanningResult) => {
     void handlePlaybackInput(data);
-  };
-
-  const handlePlayerMessage = (event: WebViewMessageEvent) => {
-    let message: BridgeMessage;
-
-    try {
-      message = JSON.parse(event.nativeEvent.data) as BridgeMessage;
-    } catch {
-      return;
-    }
-
-    console.log("[PLAYER] message:", message.type, message.payload ?? null);
-
-    switch (message.type) {
-      case "ready":
-        // Some environments block autoplay without emitting autoplayBlocked.
-        // Move out of loading so users can press play manually.
-        setPlayerUiState((state) => (state === "loading" ? "paused" : state));
-        return;
-      case "playing":
-        setPlayerUiState("playing");
-        return;
-      case "paused":
-        setPlayerUiState("paused");
-        return;
-      case "autoplayBlocked":
-        setPlayerUiState("blocked");
-        return;
-      case "ended":
-        resetToScanner();
-        return;
-      case "error":
-        handlePlaybackFailure(mapYouTubeError(message.payload?.code));
-        return;
-      case "state":
-      default:
-        return;
-    }
-  };
-
-  const sendPlayerCommand = (
-    fnName: "__YT_PLAY__" | "__YT_PAUSE__" | "__YT_STOP__",
-  ) => {
-    webViewRef.current?.injectJavaScript(`
-      if (window.${fnName}) {
-        window.${fnName}();
-      }
-      true;
-    `);
   };
 
   const loadingOverlay = isLoadingOverlayVisible ? (
@@ -560,11 +426,11 @@ function ScannerPlayerScreen() {
     </View>
   ) : null;
 
-  if (!permission && mode === "scanner") {
+  if (!permission) {
     return <View style={styles.blank} />;
   }
 
-  if (mode === "scanner" && !permission?.granted) {
+  if (!permission.granted) {
     if (isLoadingOverlayVisible) {
       return (
         <SafeAreaView style={styles.container}>
@@ -585,181 +451,84 @@ function ScannerPlayerScreen() {
     );
   }
 
-  if (mode === "scanner") {
-    return (
-      <SafeAreaView style={styles.container}>
-        <CameraView
-          style={StyleSheet.absoluteFill}
-          facing={scannerFacing}
-          barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-          onBarcodeScanned={handleBarcodeScanned}
-        />
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.cameraFacingButton,
-            {
-              top: cameraFacingButtonTop,
-            },
-            pressed && styles.pressedButton,
-          ]}
-          onPress={() =>
-            setScannerFacing((value) => (value === "back" ? "front" : "back"))
-          }
-        >
-          <View style={styles.cameraFacingButtonInner}>
-            <Text style={styles.cameraFacingButtonIcon}>⟳</Text>
-            <Text style={styles.cameraFacingButtonText}>
-              {scannerFacing === "back" ? "전면 카메라" : "후면 카메라"}
-            </Text>
-          </View>
-        </Pressable>
-
-        <View
-          style={[
-            styles.scannerHint,
-            {
-              bottom: scannerHintBottom,
-            },
-          ]}
-        >
-          <Text style={styles.scannerTitle}>QR을 비춰 주세요</Text>
-          <Text style={styles.scannerDescription}>
-            한 번에 하나의 영상만 재생하며, 종료되면 자동으로 스캔 화면으로
-            돌아옵니다.
-          </Text>
-        </View>
-
-        {redirectProbe ? (
-          <WebView
-            key={`redirect-probe-${redirectProbe.key}`}
-            source={{ uri: redirectProbe.sourceUrl }}
-            originWhitelist={["*"]}
-            style={styles.hiddenRedirectWebView}
-            onShouldStartLoadWithRequest={(request) => {
-              const nextUrl = request.url ?? "";
-              if (isHttpSchemeUrl(nextUrl)) {
-                handleRedirectProbeObservedUrl(nextUrl);
-                return true;
-              }
-
-              const fallbackUrl = getIntentFallbackUrl(nextUrl);
-              if (fallbackUrl) {
-                handleRedirectProbeObservedUrl(fallbackUrl);
-              }
-
-              return false;
-            }}
-            onNavigationStateChange={(state) => {
-              handleRedirectProbeObservedUrl(state.url);
-            }}
-            onLoadEnd={() => {
-              handleRedirectProbeObservedUrl(
-                redirectProbeLatestUrlRef.current ?? undefined,
-              );
-            }}
-            onError={() => settleRedirectProbe(null)}
-            onHttpError={() => settleRedirectProbe(null)}
-            javaScriptEnabled
-            domStorageEnabled
-            javaScriptCanOpenWindowsAutomatically={false}
-            setSupportMultipleWindows={false}
-          />
-        ) : null}
-
-        {loadingOverlay}
-      </SafeAreaView>
-    );
-  }
-
-  const primaryButtonLabel =
-    playerUiState === "loading"
-      ? "로딩 중..."
-      : playerUiState === "paused"
-        ? "계속 재생"
-        : playerUiState === "blocked"
-          ? "재생"
-          : "일시정지";
-
-  const isPrimaryDisabled = playerUiState === "loading";
-  const isPlaying = playerUiState === "playing";
-  const shouldBlockPlayerAreaTouch =
-    isPlaying && PLAYBACK_TOUCH_BLOCK_SCOPE === "player";
-  const shouldBlockAppTouch = isPlaying && PLAYBACK_TOUCH_BLOCK_SCOPE === "app";
-
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.playerArea}>
-        <WebView
-          key={sessionKey}
-          ref={webViewRef}
-          originWhitelist={["*"]}
-          source={{ html, baseUrl: APP_ORIGIN }}
-          onMessage={handlePlayerMessage}
-          onError={() => handlePlaybackFailure(NETWORK_ERROR_MESSAGE)}
-          onHttpError={() => handlePlaybackFailure(NETWORK_ERROR_MESSAGE)}
-          javaScriptEnabled
-          scrollEnabled={false}
-          domStorageEnabled
-          mediaPlaybackRequiresUserAction={false}
-          allowsInlineMediaPlayback
-          javaScriptCanOpenWindowsAutomatically={false}
-          allowsFullscreenVideo={false}
-          {...(Platform.OS === "android"
-            ? {
-                setBuiltInZoomControls: false,
-                setDisplayZoomControls: false,
-              }
-            : {})}
-        />
-        {shouldBlockPlayerAreaTouch ? (
-          <Pressable
-            style={styles.playerTouchBlocker}
-            onPress={() => {}}
-            accessibilityLabel="player-touch-blocker"
-          />
-        ) : null}
+      <CameraView
+        style={StyleSheet.absoluteFill}
+        facing={scannerFacing}
+        barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+        onBarcodeScanned={handleBarcodeScanned}
+      />
+
+      <Pressable
+        style={({ pressed }) => [
+          styles.cameraFacingButton,
+          {
+            top: cameraFacingButtonTop,
+          },
+          pressed && styles.pressedButton,
+        ]}
+        onPress={() =>
+          setScannerFacing((value) => (value === "back" ? "front" : "back"))
+        }
+      >
+        <View style={styles.cameraFacingButtonInner}>
+          <Text style={styles.cameraFacingButtonIcon}>⟳</Text>
+          <Text style={styles.cameraFacingButtonText}>
+            {scannerFacing === "back" ? "전면 카메라" : "후면 카메라"}
+          </Text>
+        </View>
+      </Pressable>
+
+      <View
+        style={[
+          styles.scannerHint,
+          {
+            bottom: scannerHintBottom,
+          },
+        ]}
+      >
+        <Text style={styles.scannerTitle}>QR을 비춰 주세요</Text>
+        <Text style={styles.scannerDescription}>
+          한 번에 하나의 영상만 재생하며, 종료되면 자동으로 스캔 화면으로
+          돌아옵니다.
+        </Text>
       </View>
 
-      <View style={styles.controls}>
-        <Pressable
-          disabled={isPrimaryDisabled}
-          style={({ pressed }) => [
-            styles.primaryButton,
-            isPrimaryDisabled && styles.disabledButton,
-            pressed && !isPrimaryDisabled && styles.pressedButton,
-          ]}
-          onPress={() => {
-            if (playerUiState === "paused" || playerUiState === "blocked") {
-              sendPlayerCommand("__YT_PLAY__");
-              return;
+      {redirectProbe ? (
+        <WebView
+          key={`redirect-probe-${redirectProbe.key}`}
+          source={{ uri: redirectProbe.sourceUrl }}
+          originWhitelist={["*"]}
+          style={styles.hiddenRedirectWebView}
+          onShouldStartLoadWithRequest={(request) => {
+            const nextUrl = request.url ?? "";
+            if (isHttpSchemeUrl(nextUrl)) {
+              handleRedirectProbeObservedUrl(nextUrl);
+              return true;
             }
 
-            sendPlayerCommand("__YT_PAUSE__");
-          }}
-        >
-          <Text style={styles.buttonText}>{primaryButtonLabel}</Text>
-        </Pressable>
+            const fallbackUrl = getIntentFallbackUrl(nextUrl);
+            if (fallbackUrl) {
+              handleRedirectProbeObservedUrl(fallbackUrl);
+            }
 
-        <Pressable
-          style={({ pressed }) => [
-            styles.secondaryButton,
-            pressed && styles.pressedButton,
-          ]}
-          onPress={() => {
-            sendPlayerCommand("__YT_STOP__");
-            resetToScanner();
+            return false;
           }}
-        >
-          <Text style={styles.buttonText}>종료</Text>
-        </Pressable>
-      </View>
-
-      {shouldBlockAppTouch ? (
-        <Pressable
-          style={styles.appTouchBlocker}
-          onPress={() => {}}
-          accessibilityLabel="app-touch-blocker"
+          onNavigationStateChange={(state) => {
+            handleRedirectProbeObservedUrl(state.url);
+          }}
+          onLoadEnd={() => {
+            handleRedirectProbeObservedUrl(
+              redirectProbeLatestUrlRef.current ?? undefined,
+            );
+          }}
+          onError={() => settleRedirectProbe(null)}
+          onHttpError={() => settleRedirectProbe(null)}
+          javaScriptEnabled
+          domStorageEnabled
+          javaScriptCanOpenWindowsAutomatically={false}
+          setSupportMultipleWindows={false}
         />
       ) : null}
 
@@ -768,9 +537,9 @@ function ScannerPlayerScreen() {
   );
 }
 
-// Exports the scanner-player feature for the first tab route.
+// Exports the scanner feature for the first tab route.
 export default function App() {
-  return <ScannerPlayerScreen />;
+  return <ScannerScreen />;
 }
 
 const styles = StyleSheet.create({
@@ -911,18 +680,6 @@ const styles = StyleSheet.create({
     marginTop: 6,
     color: "#D1D5DB",
     fontSize: 14,
-  },
-  playerTouchBlocker: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "transparent",
-    zIndex: 20,
-    elevation: 20,
-  },
-  appTouchBlocker: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "transparent",
-    zIndex: 25,
-    elevation: 25,
   },
   hiddenRedirectWebView: {
     position: "absolute",
