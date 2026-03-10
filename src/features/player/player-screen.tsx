@@ -1,3 +1,4 @@
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import React, {
   useCallback,
   useEffect,
@@ -8,7 +9,6 @@ import React, {
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -31,11 +31,10 @@ const APP_ORIGIN = "https://qrplay.app.local";
 const PLAYER_ASPECT_RATIO = 16 / 9;
 const PLAYER_READY_TIMEOUT_MS = 15000;
 const PLAYER_HORIZONTAL_PADDING = 16;
-const CONTROL_BUTTON_HEIGHT = 38;
-const CONTROL_BUTTON_GAP = 10;
-const CONTROL_BUTTON_MAX_WIDTH = 112;
-const CONTROL_BUTTON_MIN_WIDTH = 96;
-const CONTROL_TOP_PADDING = 12;
+const PLAYER_VERTICAL_PADDING = 16;
+const TOP_TOOLBAR_BUTTON_SIZE = 38;
+const TOP_TOOLBAR_GAP = 10;
+const TOP_TOOLBAR_MARGIN = 16;
 // "player": block only WebView area, "app": block entire app while video is playing.
 const PLAYBACK_TOUCH_BLOCK_SCOPE: "player" | "app" = "player";
 
@@ -225,39 +224,35 @@ export function PlayerScreen() {
     </View>
   ) : null;
 
-  const primaryButtonLabel =
-    playerUiState === "loading"
-      ? "로딩 중..."
-      : playerUiState === "paused"
-        ? "계속 재생"
-        : playerUiState === "blocked"
-          ? "재생"
-          : "일시정지";
-  const isPrimaryDisabled = playerUiState === "loading";
   const isPlaying = playerUiState === "playing";
   const shouldBlockPlayerAreaTouch =
     isPlaying && PLAYBACK_TOUCH_BLOCK_SCOPE === "player";
   const shouldBlockAppTouch = isPlaying && PLAYBACK_TOUCH_BLOCK_SCOPE === "app";
-  const controlsPaddingBottom = Math.max(12, insets.bottom + 8);
-  const controlsTotalHeight =
-    CONTROL_TOP_PADDING + controlsPaddingBottom + CONTROL_BUTTON_HEIGHT;
+  const isAndroid = process.env.EXPO_OS === "android";
+  const topToolbarTop = Math.max(12, insets.top + 8);
+  const topReservedHeight =
+    topToolbarTop + TOP_TOOLBAR_BUTTON_SIZE + PLAYER_VERTICAL_PADDING;
+  const bottomReservedHeight = Math.max(PLAYER_VERTICAL_PADDING, insets.bottom + 12);
   const maxPlayerWidth = Math.max(0, width - PLAYER_HORIZONTAL_PADDING * 2);
   const fullWidthPlayerHeight = maxPlayerWidth / PLAYER_ASPECT_RATIO;
-  const availablePlayerHeight = Math.max(0, height - controlsTotalHeight);
+  const availablePlayerHeight = Math.max(
+    0,
+    height - topReservedHeight - bottomReservedHeight,
+  );
   const playerHeight = Math.min(fullWidthPlayerHeight, availablePlayerHeight);
   const playerWidth = Math.min(
     maxPlayerWidth,
     Math.max(0, playerHeight * PLAYER_ASPECT_RATIO),
   );
-  const maxFittingButtonWidth = Math.max(
-    0,
-    (width - PLAYER_HORIZONTAL_PADDING * 2 - CONTROL_BUTTON_GAP) / 2,
-  );
-  const controlButtonWidth = Math.min(
-    CONTROL_BUTTON_MAX_WIDTH,
-    Math.max(CONTROL_BUTTON_MIN_WIDTH, playerWidth * 0.33),
-    maxFittingButtonWidth,
-  );
+  const playbackControlIconName =
+    playerUiState === "paused" || playerUiState === "blocked" || playerUiState === "loading"
+      ? "play-arrow"
+      : "pause";
+  const playbackControlLabel =
+    playerUiState === "paused" || playerUiState === "blocked" || playerUiState === "loading"
+      ? "재생"
+      : "일시정지";
+  const isPlaybackControlDisabled = playerUiState === "loading";
 
   if (!isPlaybackSessionReady) {
     return <View style={styles.blank} />;
@@ -267,78 +262,17 @@ export function PlayerScreen() {
     <View style={styles.container}>
       <View
         style={[
-          styles.playerArea,
+          styles.topToolbar,
           {
-            height: playerHeight,
-            width: playerWidth,
+            top: topToolbarTop,
+            right: TOP_TOOLBAR_MARGIN,
           },
         ]}
       >
-        <WebView
-          ref={webViewRef}
-          originWhitelist={["*"]}
-          source={{ html, baseUrl: APP_ORIGIN }}
-          onMessage={handlePlayerMessage}
-          onError={() => handlePlaybackFailure(NETWORK_ERROR_MESSAGE)}
-          onHttpError={() => handlePlaybackFailure(NETWORK_ERROR_MESSAGE)}
-          javaScriptEnabled
-          scrollEnabled={false}
-          domStorageEnabled
-          mediaPlaybackRequiresUserAction={false}
-          allowsInlineMediaPlayback
-          javaScriptCanOpenWindowsAutomatically={false}
-          allowsFullscreenVideo={false}
-          {...(Platform.OS === "android"
-            ? {
-                setBuiltInZoomControls: false,
-                setDisplayZoomControls: false,
-              }
-            : {})}
-        />
-
-        {shouldBlockPlayerAreaTouch ? (
-          <Pressable
-            style={styles.playerTouchBlocker}
-            onPress={() => {}}
-            accessibilityLabel="player-touch-blocker"
-          />
-        ) : null}
-
         <Pressable
+          accessibilityLabel={playbackControlLabel}
           accessibilityRole="button"
-          onPress={() => closePlayer()}
-          style={({ pressed }) => [
-            styles.closeButton,
-            {
-              top: Math.max(12, insets.top + 8),
-            },
-            pressed ? styles.closeButtonPressed : undefined,
-          ]}
-        >
-          <Text selectable style={styles.closeButtonLabel}>
-            X
-          </Text>
-        </Pressable>
-      </View>
-
-      <View
-        style={[
-          styles.controls,
-          {
-            paddingBottom: controlsPaddingBottom,
-          },
-        ]}
-      >
-        <Pressable
-          disabled={isPrimaryDisabled}
-          style={({ pressed }) => [
-            styles.primaryButton,
-            {
-              width: controlButtonWidth,
-            },
-            isPrimaryDisabled && styles.disabledButton,
-            pressed && !isPrimaryDisabled && styles.pressedButton,
-          ]}
+          disabled={isPlaybackControlDisabled}
           onPress={() => {
             if (playerUiState === "paused" || playerUiState === "blocked") {
               sendPlayerCommand("__YT_PLAY__");
@@ -347,31 +281,89 @@ export function PlayerScreen() {
 
             sendPlayerCommand("__YT_PAUSE__");
           }}
+          style={({ pressed }) => [
+            styles.iconButton,
+            isPlaybackControlDisabled && styles.iconButtonDisabled,
+            pressed && !isPlaybackControlDisabled ? styles.iconButtonPressed : undefined,
+          ]}
         >
-          <Text style={styles.buttonText}>{primaryButtonLabel}</Text>
+          <MaterialIcons
+            color="#FFFFFF"
+            name={playbackControlIconName}
+            size={22}
+          />
         </Pressable>
 
         <Pressable
-          style={({ pressed }) => [
-            styles.secondaryButton,
-            {
-              width: controlButtonWidth,
-            },
-            pressed && styles.pressedButton,
-          ]}
+          accessibilityLabel="닫기"
+          accessibilityRole="button"
           onPress={() => closePlayer()}
+          style={({ pressed }) => [
+            styles.iconButton,
+            pressed ? styles.iconButtonPressed : undefined,
+          ]}
         >
-          <Text style={styles.buttonText}>종료</Text>
+          <MaterialIcons color="#FFFFFF" name="close" size={20} />
         </Pressable>
       </View>
 
+      <View
+        style={[
+          styles.playerViewport,
+          {
+            paddingTop: topReservedHeight,
+            paddingBottom: bottomReservedHeight,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.playerArea,
+            {
+              height: playerHeight,
+              width: playerWidth,
+            },
+          ]}
+        >
+          <WebView
+            ref={webViewRef}
+            originWhitelist={["*"]}
+            source={{ html, baseUrl: APP_ORIGIN }}
+            onMessage={handlePlayerMessage}
+            onError={() => handlePlaybackFailure(NETWORK_ERROR_MESSAGE)}
+            onHttpError={() => handlePlaybackFailure(NETWORK_ERROR_MESSAGE)}
+            javaScriptEnabled
+            scrollEnabled={false}
+            domStorageEnabled
+            mediaPlaybackRequiresUserAction={false}
+            allowsInlineMediaPlayback
+            javaScriptCanOpenWindowsAutomatically={false}
+            allowsFullscreenVideo={false}
+            {...(isAndroid
+              ? {
+                  setBuiltInZoomControls: false,
+                  setDisplayZoomControls: false,
+                }
+              : {})}
+          />
+
+          {shouldBlockPlayerAreaTouch ? (
+            <Pressable
+              style={styles.playerTouchBlocker}
+              onPress={() => {}}
+              accessibilityLabel="player-touch-blocker"
+            />
+          ) : null}
+        </View>
+      </View>
+
       {shouldBlockAppTouch ? (
-        <Pressable
-          style={styles.appTouchBlocker}
-          onPress={() => {}}
-          accessibilityLabel="app-touch-blocker"
-        />
-      ) : null}
+          <Pressable
+            style={styles.appTouchBlocker}
+            onPress={() => {}}
+            accessibilityLabel="app-touch-blocker"
+          />
+        ) : null}
 
       {loadingOverlay}
     </View>
@@ -387,63 +379,37 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#000000",
   },
+  topToolbar: {
+    position: "absolute",
+    zIndex: 25,
+    flexDirection: "row",
+    gap: TOP_TOOLBAR_GAP,
+  },
+  iconButton: {
+    width: TOP_TOOLBAR_BUTTON_SIZE,
+    height: TOP_TOOLBAR_BUTTON_SIZE,
+    borderRadius: TOP_TOOLBAR_BUTTON_SIZE / 2,
+    backgroundColor: "rgba(17, 24, 39, 0.78)",
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 25,
+  },
+  iconButtonPressed: {
+    backgroundColor: "rgba(31, 41, 55, 0.92)",
+  },
+  iconButtonDisabled: {
+    opacity: 0.5,
+  },
+  playerViewport: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: PLAYER_HORIZONTAL_PADDING,
+  },
   playerArea: {
     position: "relative",
     alignSelf: "center",
     backgroundColor: "#000000",
-  },
-  closeButton: {
-    position: "absolute",
-    right: 16,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(17, 24, 39, 0.78)",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 25,
-    elevation: 25,
-  },
-  closeButtonPressed: {
-    backgroundColor: "rgba(31, 41, 55, 0.92)",
-  },
-  closeButtonLabel: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  controls: {
-    flexDirection: "row",
-    justifyContent: "center",
-    paddingHorizontal: PLAYER_HORIZONTAL_PADDING,
-    paddingTop: CONTROL_TOP_PADDING,
-    gap: CONTROL_BUTTON_GAP,
-  },
-  primaryButton: {
-    height: CONTROL_BUTTON_HEIGHT,
-    borderRadius: 10,
-    backgroundColor: "#2563EB",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  secondaryButton: {
-    height: CONTROL_BUTTON_HEIGHT,
-    borderRadius: 10,
-    backgroundColor: "#4B5563",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  pressedButton: {
-    opacity: 0.85,
-  },
-  disabledButton: {
-    backgroundColor: "#1D4ED8",
-    opacity: 0.65,
-  },
-  buttonText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "700",
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
