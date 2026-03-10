@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { useFloatingTabBarMetrics } from "../../src/features/floating-tab-bar/floating-tab-bar-context";
 import { usePlaybackHistory } from "../../src/features/playback-history/playback-history-context";
 
 // Formats the last interaction time for a history card subtitle.
@@ -16,6 +17,7 @@ function formatHistoryTimestamp(timestamp: number): string {
 // Renders the redesigned playback history list for the second tab.
 export default function HistoryScreen() {
   const router = useRouter();
+  const { reservedBottomSpace } = useFloatingTabBarMetrics();
   const { history, requestReplay } = usePlaybackHistory();
   const totalCount = history.length;
 
@@ -28,7 +30,12 @@ export default function HistoryScreen() {
         data={history}
         keyExtractor={(item) => item.id}
         contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={[
+          styles.contentContainer,
+          {
+            paddingBottom: Math.max(40, reservedBottomSpace + 24),
+          },
+        ]}
         showsVerticalScrollIndicator={false}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListHeaderComponent={

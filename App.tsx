@@ -14,6 +14,7 @@ import {
   SafeAreaView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import {
@@ -22,8 +23,14 @@ import {
   useCameraPermissions,
 } from "expo-camera";
 import * as SplashScreen from "expo-splash-screen";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
+import {
+  useFloatingTabBarMetrics,
+  useFloatingTabBarVisibility,
+} from "./src/features/floating-tab-bar/floating-tab-bar-context";
+import { ANDROID_FLOATING_TAB_BAR_COMPACT_HEIGHT_THRESHOLD } from "./src/features/floating-tab-bar/floating-tab-bar-constants";
 import { usePlaybackHistory } from "./src/features/playback-history/playback-history-context";
 import { buildYoutubeHtml } from "./src/lib/buildYoutubeHtml";
 import {
@@ -236,6 +243,10 @@ function ScannerPlayerScreen() {
     sourceUrl: string;
     sourceHost: string | null;
   } | null>(null);
+  const { reservedBottomSpace } = useFloatingTabBarMetrics();
+  const { setVisible } = useFloatingTabBarVisibility();
+  const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const {
     consumeReplayRequest,
@@ -260,6 +271,22 @@ function ScannerPlayerScreen() {
     if (!videoId) return "";
     return buildYoutubeHtml(videoId, APP_ORIGIN, true);
   }, [videoId, sessionKey]);
+  const isCompactHeight =
+    height < ANDROID_FLOATING_TAB_BAR_COMPACT_HEIGHT_THRESHOLD;
+  const cameraFacingButtonTop = Math.max(isCompactHeight ? 12 : 16, insets.top + 8);
+  const scannerHintBottom = Math.max(24, reservedBottomSpace);
+
+  useEffect(() => {
+    if (process.env.EXPO_OS !== "android") {
+      return;
+    }
+
+    setVisible(mode !== "player");
+
+    return () => {
+      setVisible(true);
+    };
+  }, [mode, setVisible]);
 
   const showBlockingAlert = useCallback(
     (title: string, message: string, onClose?: () => void) => {
@@ -571,6 +598,9 @@ function ScannerPlayerScreen() {
         <Pressable
           style={({ pressed }) => [
             styles.cameraFacingButton,
+            {
+              top: cameraFacingButtonTop,
+            },
             pressed && styles.pressedButton,
           ]}
           onPress={() =>
@@ -585,7 +615,14 @@ function ScannerPlayerScreen() {
           </View>
         </Pressable>
 
-        <View style={styles.scannerHint}>
+        <View
+          style={[
+            styles.scannerHint,
+            {
+              bottom: scannerHintBottom,
+            },
+          ]}
+        >
           <Text style={styles.scannerTitle}>QR을 비춰 주세요</Text>
           <Text style={styles.scannerDescription}>
             한 번에 하나의 영상만 재생하며, 종료되면 자동으로 스캔 화면으로

@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { SERVICE_CONTACT_EMAIL } from "../../src/config/app-links";
+import { useFloatingTabBarMetrics } from "../../src/features/floating-tab-bar/floating-tab-bar-context";
 
 const appVersion = require("../../app.json").expo.version as string;
 const contactMailUrl =
@@ -61,6 +62,7 @@ function SettingsRow({ label, value, onPress }: SettingsRowProps) {
 // Renders the redesigned settings home screen for the third tab.
 export default function SettingsScreen() {
   const router = useRouter();
+  const { reservedBottomSpace } = useFloatingTabBarMetrics();
 
   return (
     <View style={styles.screen}>
@@ -69,7 +71,12 @@ export default function SettingsScreen() {
 
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={[
+          styles.contentContainer,
+          {
+            paddingBottom: Math.max(42, reservedBottomSpace + 24),
+          },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.introCard}>
