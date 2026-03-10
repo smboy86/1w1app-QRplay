@@ -195,22 +195,9 @@ def load_trimmed_icon() -> Image.Image:
     return icon
 
 
-# Creates the square Play Store app icon with a full-bleed background.
+# Creates the square Play Store app icon by resizing the primary app icon directly.
 def create_app_icon(trimmed_icon: Image.Image) -> Path:
-    image = make_gradient((512, 512), "#EAF6FF", "#FFE5CD").convert("RGBA")
-    add_glow(image, (256, 256), 200, BRAND_SKY, 90)
-    add_glow(image, (392, 108), 96, BRAND_YELLOW, 88)
-
-    backdrop = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(backdrop)
-    draw.rounded_rectangle((36, 36, 476, 476), radius=110, fill=(255, 255, 255, 208))
-    draw.rounded_rectangle((56, 56, 456, 456), radius=100, outline=(255, 255, 255, 140), width=6)
-    backdrop = backdrop.filter(ImageFilter.GaussianBlur(2))
-    image.alpha_composite(backdrop)
-
-    artwork = trimmed_icon.resize((430, 430), Image.Resampling.LANCZOS)
-    image.alpha_composite(artwork, ((512 - artwork.width) // 2, (512 - artwork.height) // 2))
-
+    image = trimmed_icon.resize((512, 512), Image.Resampling.LANCZOS)
     output_path = OUTPUT_DIR / "app-icon-512.png"
     image.convert("RGB").save(output_path, optimize=True)
     return output_path
