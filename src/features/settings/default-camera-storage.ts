@@ -1,7 +1,7 @@
 import type { ScannerFacing } from "../scanner/scanner-types";
 
 const DEFAULT_CAMERA_STORAGE_KEY = "@qrplay/default-camera-facing";
-export const DEFAULT_SCANNER_FACING: ScannerFacing = "front";
+export const DEFAULT_SCANNER_FACING: ScannerFacing = "back";
 type AsyncStorageModule = {
   getItem: (key: string) => Promise<string | null>;
   setItem: (key: string, value: string) => Promise<void>;
@@ -36,7 +36,7 @@ export function isDefaultCameraStorageAvailable(): boolean {
   return getAsyncStorageModule() !== null;
 }
 
-// Reads the saved default camera facing and falls back to the front camera when unset.
+// Reads the saved default camera facing and falls back to the rear camera when unset.
 export async function getDefaultScannerFacing(): Promise<ScannerFacing> {
   const asyncStorage = getAsyncStorageModule();
   if (!asyncStorage) {

@@ -73,7 +73,7 @@ function getExpoFallbackZoom(zoomLevel: number) {
   return Math.min(0.3, Math.max(0, (zoomLevel - 1) * 0.38));
 }
 
-// Returns the next camera facing while preserving the front-camera default.
+// Returns the opposite camera facing for the scanner toggle action.
 function getNextFacing(facing: ScannerFacing): ScannerFacing {
   return facing === "back" ? "front" : "back";
 }
