@@ -4,10 +4,10 @@ import { Stack } from "expo-router";
 import { PlaybackHistoryProvider } from "../src/features/playback-history/playback-history-context";
 
 void SplashScreen.preventAutoHideAsync().catch(() => {
-  // Ignore duplicate prevention requests during fast refresh.
+  // 빠른 새로고침 중 중복 방지 요청은 무시한다.
 });
 
-// Renders the root stack that hosts the native tab navigator.
+// 네이티브 탭 내비게이터를 담는 루트 스택을 렌더링한다.
 export default function RootLayout() {
   return (
     <PlaybackHistoryProvider>

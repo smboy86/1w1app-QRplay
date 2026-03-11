@@ -65,25 +65,25 @@ const IS_ANDROID_NATIVE_SCANNER =
   process.env.EXPO_PUBLIC_ENABLE_ANDROID_NATIVE_SCANNER === "1";
 
 void SplashScreen.preventAutoHideAsync().catch(() => {
-  // Ignore duplicate prevention requests during fast refresh.
+  // 빠른 새로고침 중 중복 방지 요청은 무시한다.
 });
 
-// Approximates the expo-camera zoom scale for non-Android fallback previews.
+// 안드로이드가 아닐 때 대체 미리보기에 사용할 expo-camera 확대 비율을 근사 계산한다.
 function getExpoFallbackZoom(zoomLevel: number) {
   return Math.min(0.3, Math.max(0, (zoomLevel - 1) * 0.38));
 }
 
-// Returns the opposite camera facing for the scanner toggle action.
+// 스캐너 전환 동작에 맞는 반대 카메라 방향을 반환한다.
 function getNextFacing(facing: ScannerFacing): ScannerFacing {
   return facing === "back" ? "front" : "back";
 }
 
-// Compares floating zoom levels with a tolerance suitable for chip selection.
+// 칩 선택에 맞는 허용 오차로 확대 수치를 비교한다.
 function isZoomLevelSelected(currentZoomLevel: number, targetZoomLevel: number) {
   return Math.abs(currentZoomLevel - targetZoomLevel) < 0.06;
 }
 
-// Hosts the QR scanner flow used by the first tab.
+// 첫 번째 탭에서 사용하는 QR 스캐너 흐름을 담당한다.
 function ScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scannerFacing, setScannerFacing] =
@@ -164,7 +164,7 @@ function ScannerScreen() {
       )
     : null;
 
-  // Resets transient guidance state whenever the scan session changes.
+  // 스캔 세션이 바뀔 때마다 임시 안내 상태를 초기화한다.
   const resetScannerAssist = useCallback(() => {
     lastPrimaryCandidateRef.current = null;
     setAutoCorrectionFailures(0);
@@ -185,7 +185,7 @@ function ScannerScreen() {
     }, [resetScannerAssist]),
   );
 
-  // Loads the persisted default camera facing before the scanner preview is shown.
+  // 스캐너 미리보기를 보여주기 전에 저장된 기본 카메라 방향을 불러온다.
   useEffect(() => {
     let isActive = true;
 
@@ -205,7 +205,7 @@ function ScannerScreen() {
     };
   }, []);
 
-  // Refreshes the default camera facing whenever the scanner tab regains focus.
+  // 스캐너 탭이 다시 활성화될 때마다 기본 카메라 방향을 새로 불러온다.
   useFocusEffect(
     useCallback(() => {
       if (!isDefaultCameraFacingReady) {
@@ -256,7 +256,7 @@ function ScannerScreen() {
   useEffect(() => {
     const timeout = setTimeout(() => {
       void SplashScreen.hideAsync().catch(() => {
-        // Ignore hide errors when the splash screen is already dismissed.
+        // 스플래시 화면이 이미 내려간 경우 숨김 오류는 무시한다.
       });
     }, INITIAL_SPLASH_DELAY_MS);
 
@@ -314,7 +314,7 @@ function ScannerScreen() {
     return () => clearTimeout(timeout);
   }, [highlightFrame, highlightOpacity, highlightScale]);
 
-  // Processes scanned or replayed input into a player session and logs history.
+  // 스캔하거나 다시 재생한 입력을 플레이어 세션으로 처리하고 히스토리를 기록한다.
   const handlePlaybackInput = useCallback(
     async (input: string, historyId?: string) => {
       if (scanLockedRef.current || alertVisibleRef.current) return;
@@ -371,7 +371,7 @@ function ScannerScreen() {
     );
   }, [consumeReplayRequest, handlePlaybackInput, pendingReplayRequest]);
 
-  // Handles a successful scan payload and starts the playback resolution flow.
+  // 스캔 성공 결과를 처리하고 재생 해석 흐름을 시작한다.
   const handleSuccessfulScan = useCallback(
     (data: string, nextHighlightFrame: HighlightFrame | null) => {
       setIsRearCameraSuggestionVisible(false);
@@ -383,7 +383,7 @@ function ScannerScreen() {
     [handlePlaybackInput],
   );
 
-  // Updates the guide overlay from ML Kit potential barcode telemetry.
+  // ML Kit 잠재 바코드 정보로 안내 오버레이를 갱신한다.
   const handlePotentialBarcodes = useCallback(
     (
       event: NativeSyntheticEvent<ScannerPotentialBarcodesEvent>,
@@ -408,7 +408,7 @@ function ScannerScreen() {
     [],
   );
 
-  // Applies native zoom suggestions so the overlay stays in sync with CameraX.
+  // 오버레이가 CameraX와 동기화되도록 네이티브 확대 제안을 반영한다.
   const handleZoomSuggestion = useCallback(
     (event: NativeSyntheticEvent<ScannerZoomSuggestionEvent>) => {
       const nextZoomLevel = Math.max(1, event.nativeEvent.zoomRatio);
@@ -417,7 +417,7 @@ function ScannerScreen() {
     [],
   );
 
-  // Updates focus guidance from native tap-to-focus and fixed-focus telemetry.
+  // 네이티브 탭 초점 및 고정 초점 정보로 초점 안내를 갱신한다.
   const handleFocusStateChanged = useCallback(
     (
       event: NativeSyntheticEvent<ScannerFocusStateEvent>,
@@ -442,7 +442,7 @@ function ScannerScreen() {
     [],
   );
 
-  // Handles decoded QR events emitted by the Android native scanner view.
+  // 안드로이드 네이티브 스캐너 뷰에서 발생한 QR 디코드 이벤트를 처리한다.
   const handleNativeBarcodeScanned = useCallback(
     (
       event: NativeSyntheticEvent<{
@@ -460,7 +460,7 @@ function ScannerScreen() {
     [handleSuccessfulScan],
   );
 
-  // Handles decoded QR events from expo-camera on non-Android fallbacks.
+  // 안드로이드가 아닐 때 expo-camera의 QR 디코드 이벤트를 처리한다.
   const handleExpoBarcodeScanned = useCallback(
     ({ data }: BarcodeScanningResult) => {
       handleSuccessfulScan(data, null);
@@ -468,7 +468,7 @@ function ScannerScreen() {
     [handleSuccessfulScan],
   );
 
-  // Flips between front and rear cameras while resetting scanner guidance.
+  // 스캐너 안내를 초기화하면서 전후면 카메라를 전환한다.
   const handleCameraFacingPress = useCallback(() => {
     const nextFacing = getNextFacing(scannerFacing);
     setScannerFacing(nextFacing);
@@ -476,24 +476,24 @@ function ScannerScreen() {
     resetScannerAssist();
   }, [resetScannerAssist, scannerFacing]);
 
-  // Toggles the scanner guide card between collapsed and expanded states.
+  // 스캐너 안내 카드를 접힘/펼침 상태로 전환한다.
   const handleScannerHintToggle = useCallback(() => {
     setIsScannerHintCollapsed((current) => !current);
   }, []);
 
-  // Applies a front-camera zoom preset chosen from the overlay chips.
+  // 오버레이 칩에서 선택한 전면 카메라 확대 프리셋을 적용한다.
   const handleZoomLevelPress = useCallback((nextZoomLevel: number) => {
     setZoomLevel(nextZoomLevel);
   }, []);
 
-  // Switches to the rear camera when the front camera needs help.
+  // 전면 카메라 보조가 필요할 때 후면 카메라로 전환한다.
   const handleRearCameraSwitch = useCallback(() => {
     setScannerFacing("back");
     setZoomLevel(1);
     resetScannerAssist();
   }, [resetScannerAssist]);
 
-  // Records preview dimensions so overlay math stays aligned to the camera.
+  // 오버레이 계산이 카메라와 맞도록 미리보기 크기를 기록한다.
   const handlePreviewLayout = useCallback((event: LayoutChangeEvent) => {
     const { height: nextHeight, width: nextWidth } = event.nativeEvent.layout;
     if (!nextWidth || !nextHeight) return;
@@ -503,7 +503,7 @@ function ScannerScreen() {
     });
   }, []);
 
-  // Sends a programmatic tap-to-focus request for presses inside the scan frame.
+  // 스캔 프레임 내부 터치에 대해 프로그램 방식의 탭 초점 요청을 보낸다.
   const handleFocusFramePress = useCallback(
     (event: GestureResponderEvent) => {
       if (!IS_ANDROID_NATIVE_SCANNER || !effectivePreviewLayout.width) return;
@@ -827,7 +827,7 @@ function ScannerScreen() {
   );
 }
 
-// Exports the scanner feature for the first tab route.
+// 첫 번째 탭 라우트에서 사용할 스캐너 기능을 내보낸다.
 export default function App() {
   return <ScannerScreen />;
 }

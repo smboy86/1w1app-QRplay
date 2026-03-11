@@ -10,7 +10,7 @@ const tabBarActiveColor = "#FACC15";
 const tabBarIndicatorColor = "#3F3300";
 const isAndroid = process.env.EXPO_OS === "android";
 
-// Renders the app tab navigator and applies the Android floating tab bar.
+// 앱 탭 내비게이터를 렌더링하고 안드로이드 플로팅 탭 바를 적용한다.
 export default function TabLayout() {
   return (
     <FloatingTabBarProvider>

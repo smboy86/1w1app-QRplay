@@ -6,6 +6,10 @@ export type BridgeMessage =
   | { type: "paused"; payload: null }
   | { type: "ended"; payload: null }
   | { type: "autoplayBlocked"; payload: null }
+  | {
+      type: "progress";
+      payload: { durationSeconds: number; currentTimeSeconds: number };
+    }
   | { type: "error"; payload: { code?: number } }
   | { type: "state"; payload: { state: number } };
 

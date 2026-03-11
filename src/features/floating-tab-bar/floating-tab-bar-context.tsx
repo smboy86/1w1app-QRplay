@@ -28,7 +28,7 @@ const FloatingTabBarMetricsContext = createContext<FloatingTabBarMetrics | null>
   null,
 );
 
-// Provides shared floating-tab visibility state and layout metrics for Android tab screens.
+// 안드로이드 탭 화면에서 공유하는 플로팅 탭 바 표시 상태와 레이아웃 지표를 제공한다.
 export function FloatingTabBarProvider({
   children,
 }: PropsWithChildren): React.JSX.Element {
@@ -64,7 +64,7 @@ export function FloatingTabBarProvider({
   );
 }
 
-// Returns the current floating-tab visibility controller for Android tab screens.
+// 안드로이드 탭 화면용 현재 플로팅 탭 바 표시 제어값을 반환한다.
 export function useFloatingTabBarVisibility(): FloatingTabBarVisibilityContextValue {
   const context = React.use(FloatingTabBarVisibilityContext);
   if (!context) {
@@ -76,7 +76,7 @@ export function useFloatingTabBarVisibility(): FloatingTabBarVisibilityContextVa
   return context;
 }
 
-// Returns the current floating-tab size metrics used to reserve bottom space.
+// 하단 여백 확보에 사용하는 현재 플로팅 탭 바 크기 지표를 반환한다.
 export function useFloatingTabBarMetrics(): FloatingTabBarMetrics {
   const context = React.use(FloatingTabBarMetricsContext);
   if (!context) {

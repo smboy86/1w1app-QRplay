@@ -41,7 +41,7 @@ type SettingsSwitchRowProps = {
   onValueChange: (nextValue: boolean) => void;
 };
 
-// Opens a supported external target and shows an error if it cannot be handled.
+// 지원되는 외부 대상 화면을 열고 처리할 수 없으면 오류를 보여준다.
 async function openExternalTarget(target: string) {
   try {
     await Linking.openURL(target);
@@ -53,7 +53,7 @@ async function openExternalTarget(target: string) {
   }
 }
 
-// Renders a single row inside the vertical settings list.
+// 세로 설정 목록 안의 단일 행을 렌더링한다.
 function SettingsRow({ label, value, onPress }: SettingsRowProps) {
   return (
     <Pressable
@@ -87,7 +87,7 @@ function SettingsRow({ label, value, onPress }: SettingsRowProps) {
   );
 }
 
-// Renders a switch-based settings row with a tappable container and current value label.
+// 탭 가능한 컨테이너와 현재 값 라벨을 갖춘 스위치형 설정 행을 렌더링한다.
 function SettingsSwitchRow({
   currentValueLabel,
   disabled,
@@ -136,7 +136,7 @@ function SettingsSwitchRow({
   );
 }
 
-// Renders the redesigned settings home screen for the third tab.
+// 세 번째 탭용으로 재구성한 설정 홈 화면을 렌더링한다.
 export default function SettingsScreen() {
   const router = useRouter();
   const { reservedBottomSpace } = useFloatingTabBarMetrics();
@@ -146,7 +146,7 @@ export default function SettingsScreen() {
   const [isSavingDefaultCameraFacing, setIsSavingDefaultCameraFacing] =
     useState(false);
 
-  // Refreshes the saved default camera facing whenever the settings tab becomes active.
+  // 설정 탭이 활성화될 때마다 저장된 기본 카메라 방향을 새로 불러온다.
   useFocusEffect(
     useCallback(() => {
       let isActive = true;
@@ -172,7 +172,7 @@ export default function SettingsScreen() {
     }, [isDefaultCameraStorageReady]),
   );
 
-  // Updates and persists the default scanner camera when the settings switch is toggled.
+  // 설정 스위치를 바꿀 때 기본 스캐너 카메라를 갱신하고 저장한다.
   const handleDefaultCameraToggle = useCallback(
     async (isFrontCameraEnabled: boolean) => {
       const nextFacing: ScannerFacing = isFrontCameraEnabled ? "front" : "back";

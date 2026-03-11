@@ -16,7 +16,7 @@ import { usePlaybackHistory } from "../../src/features/playback-history/playback
 import { extractYouTubeId } from "../../src/lib/extractYouTubeId";
 import type { PlaybackHistoryEntry } from "../../src/lib/types";
 
-// Formats the last interaction time for a history card subtitle.
+// 히스토리 카드 부제목에 표시할 마지막 상호작용 시간을 포맷한다.
 function formatHistoryTimestamp(timestamp: number): string {
   return new Date(timestamp).toLocaleString("ko-KR", {
     month: "2-digit",
@@ -44,7 +44,7 @@ function getCachedPlaybackTarget(entry: PlaybackHistoryEntry): {
   };
 }
 
-// Renders the redesigned playback history list for the second tab.
+// 두 번째 탭용으로 재구성한 재생 히스토리 목록을 렌더링한다.
 export default function HistoryScreen() {
   const router = useRouter();
   const { reservedBottomSpace } = useFloatingTabBarMetrics();

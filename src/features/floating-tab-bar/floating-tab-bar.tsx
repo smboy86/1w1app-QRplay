@@ -39,7 +39,7 @@ const TAB_ITEM_CONFIG: Record<string, FloatingTabBarItemConfig> = {
   },
 };
 
-// Returns the icon and default label used by a known floating-tab route.
+// 알려진 플로팅 탭 경로에 사용하는 아이콘과 기본 라벨을 반환한다.
 function getTabItemConfig(routeName: string): FloatingTabBarItemConfig {
   return TAB_ITEM_CONFIG[routeName] ?? {
     iconName: "radio-button-unchecked",
@@ -47,7 +47,7 @@ function getTabItemConfig(routeName: string): FloatingTabBarItemConfig {
   };
 }
 
-// Resolves the label text shown for a tab item from its descriptor options.
+// 디스크립터 옵션을 바탕으로 탭 항목에 표시할 라벨을 결정한다.
 function getTabLabel(routeName: string, label: unknown, title: unknown): string {
   if (typeof label === "string") {
     return label;
@@ -60,7 +60,7 @@ function getTabLabel(routeName: string, label: unknown, title: unknown): string 
   return getTabItemConfig(routeName).label;
 }
 
-// Renders the Android-only floating tab bar used by the JS tab navigator.
+// JS 탭 내비게이터에서 사용하는 안드로이드 전용 플로팅 탭 바를 렌더링한다.
 export function FloatingTabBar({
   state,
   descriptors,

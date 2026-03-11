@@ -35,10 +35,44 @@ const PLAYER_VERTICAL_PADDING = 16;
 const TOP_TOOLBAR_BUTTON_SIZE = 38;
 const TOP_TOOLBAR_GAP = 10;
 const TOP_TOOLBAR_MARGIN = 16;
-// "player": block only WebView area, "app": block entire app while video is playing.
+// "player": WebView 영역만 막고, "app": 영상 재생 중 앱 전체를 막는다.
 const PLAYBACK_TOUCH_BLOCK_SCOPE: "player" | "app" = "player";
+const UNKNOWN_PLAYBACK_CLOCK = "--:--:--";
 
-// Normalizes an Expo Router search param into a single string value.
+type PlaybackTiming = {
+  durationSeconds: number | null;
+  currentTimeSeconds: number;
+};
+
+// 초 단위 재생 시간을 HH:MM:SS 형식 문자열로 변환한다.
+function formatPlaybackClock(totalSeconds: number | null): string {
+  if (totalSeconds === null || !Number.isFinite(totalSeconds)) {
+    return UNKNOWN_PLAYBACK_CLOCK;
+  }
+
+  const safeTotalSeconds = Math.max(0, Math.round(totalSeconds));
+  const hours = Math.floor(safeTotalSeconds / 3600);
+  const minutes = Math.floor((safeTotalSeconds % 3600) / 60);
+  const seconds = safeTotalSeconds % 60;
+
+  return [hours, minutes, seconds]
+    .map((value) => String(value).padStart(2, "0"))
+    .join(":");
+}
+
+// 전체 길이와 현재 위치로 남은 재생 시간을 계산한다.
+function getRemainingPlaybackSeconds(
+  durationSeconds: number | null,
+  currentTimeSeconds: number,
+): number | null {
+  if (durationSeconds === null || !Number.isFinite(durationSeconds)) {
+    return null;
+  }
+
+  return Math.max(0, durationSeconds - currentTimeSeconds);
+}
+
+// Expo Router 검색 파라미터를 단일 문자열 값으로 정규화한다.
 function readSearchParam(value: string | string[] | undefined): string | null {
   if (typeof value === "string") {
     const trimmed = value.trim();
@@ -53,7 +87,7 @@ function readSearchParam(value: string | string[] | undefined): string | null {
   return null;
 }
 
-// Renders the dedicated playback route for a resolved YouTube session.
+// 해석된 유튜브 세션용 전용 재생 라우트를 렌더링한다.
 export function PlayerScreen() {
   const router = useRouter();
   const { height, width } = useWindowDimensions();
@@ -74,6 +108,10 @@ export function PlayerScreen() {
   const videoId = readSearchParam(params.videoId);
   const [playerUiState, setPlayerUiState] = useState<PlayerUiState>("loading");
   const [isLoadingOverlayVisible, setIsLoadingOverlayVisible] = useState(true);
+  const [playbackTiming, setPlaybackTiming] = useState<PlaybackTiming>({
+    durationSeconds: null,
+    currentTimeSeconds: 0,
+  });
   const webViewRef = useRef<WebView>(null);
   const alertVisibleRef = useRef(false);
   const isPlaybackSessionReady =
@@ -83,7 +121,7 @@ export function PlayerScreen() {
     return buildYoutubeHtml(videoId, APP_ORIGIN, true);
   }, [videoId]);
 
-  // Sends a YouTube bridge command into the embedded WebView player.
+  // 내장 WebView 플레이어에 유튜브 브리지 명령을 보낸다.
   const sendPlayerCommand = useCallback(
     (fnName: "__YT_PLAY__" | "__YT_PAUSE__" | "__YT_STOP__") => {
       webViewRef.current?.injectJavaScript(`
@@ -106,7 +144,7 @@ export function PlayerScreen() {
     router.replace("/");
   }, [router]);
 
-  // Dismisses the player route back to the previous screen and optionally stops playback first.
+  // 이전 화면으로 플레이어 라우트를 닫고 필요하면 먼저 재생을 중지한다.
   const closePlayer = useCallback(
     (shouldStopPlayback = true) => {
       if (shouldStopPlayback) {
@@ -119,7 +157,7 @@ export function PlayerScreen() {
     [dismissPlayer, sendPlayerCommand],
   );
 
-  // Records a playback failure, shows the blocking alert, and returns after confirmation.
+  // 재생 실패를 기록하고 차단 알림을 띄운 뒤 확인 후 복귀한다.
   const handlePlaybackFailure = useCallback(
     (message: string) => {
       if (historyId && sourceUrl) {
@@ -193,7 +231,7 @@ export function PlayerScreen() {
     }
   }, [playerUiState]);
 
-  // Applies bridge events from the YouTube iframe to the native playback controls.
+  // 유튜브 iframe의 브리지 이벤트를 네이티브 재생 제어에 반영한다.
   const handlePlayerMessage = useCallback(
     (event: WebViewMessageEvent) => {
       let message: BridgeMessage;
@@ -208,8 +246,8 @@ export function PlayerScreen() {
 
       switch (message.type) {
         case "ready":
-          // Some environments block autoplay without emitting autoplayBlocked.
-          // Move out of loading so users can press play manually.
+          // 일부 환경에서는 autoplayBlocked 이벤트 없이 자동 재생을 막는다.
+          // 사용자가 수동으로 재생을 누를 수 있도록 로딩 상태를 해제한다.
           setPlayerUiState((state) => (state === "loading" ? "paused" : state));
           return;
         case "playing":
@@ -220,6 +258,15 @@ export function PlayerScreen() {
           return;
         case "autoplayBlocked":
           setPlayerUiState("blocked");
+          return;
+        case "progress":
+          setPlaybackTiming((current) => ({
+            durationSeconds:
+              message.payload.durationSeconds > 0
+                ? message.payload.durationSeconds
+                : current.durationSeconds,
+            currentTimeSeconds: Math.max(0, message.payload.currentTimeSeconds),
+          }));
           return;
         case "ended":
           closePlayer(false);
@@ -274,6 +321,12 @@ export function PlayerScreen() {
       ? "재생"
       : "일시정지";
   const isPlaybackControlDisabled = playerUiState === "loading";
+  const remainingPlaybackSeconds = getRemainingPlaybackSeconds(
+    playbackTiming.durationSeconds,
+    playbackTiming.currentTimeSeconds,
+  );
+  const totalDurationLabel = `총 ${formatPlaybackClock(playbackTiming.durationSeconds)}`;
+  const remainingDurationLabel = `남음 ${formatPlaybackClock(remainingPlaybackSeconds)}`;
 
   if (!isPlaybackSessionReady) {
     return <View style={styles.blank} />;
@@ -283,13 +336,40 @@ export function PlayerScreen() {
     <View style={styles.container}>
       <View
         style={[
-          styles.topToolbar,
+          styles.topToolbarRow,
           {
             top: topToolbarTop,
+            left: TOP_TOOLBAR_MARGIN,
             right: TOP_TOOLBAR_MARGIN,
           },
         ]}
       >
+        <View style={styles.topToolbarLeftGroup}>
+          <Pressable
+            accessibilityLabel="닫기"
+            accessibilityRole="button"
+            onPress={() => closePlayer()}
+            style={({ pressed }) => [
+              styles.iconButton,
+              pressed ? styles.iconButtonPressed : undefined,
+            ]}
+          >
+            <MaterialIcons color="#FFFFFF" name="close" size={20} />
+          </Pressable>
+
+          <View style={[styles.timeBadge, styles.timeBadgePrimary]}>
+            <Text numberOfLines={1} selectable style={styles.timeBadgeText}>
+              {totalDurationLabel}
+            </Text>
+          </View>
+
+          <View style={[styles.timeBadge, styles.timeBadgeSecondary]}>
+            <Text numberOfLines={1} selectable style={styles.timeBadgeText}>
+              {remainingDurationLabel}
+            </Text>
+          </View>
+        </View>
+
         <Pressable
           accessibilityLabel={playbackControlLabel}
           accessibilityRole="button"
@@ -313,18 +393,6 @@ export function PlayerScreen() {
             name={playbackControlIconName}
             size={22}
           />
-        </Pressable>
-
-        <Pressable
-          accessibilityLabel="닫기"
-          accessibilityRole="button"
-          onPress={() => closePlayer()}
-          style={({ pressed }) => [
-            styles.iconButton,
-            pressed ? styles.iconButtonPressed : undefined,
-          ]}
-        >
-          <MaterialIcons color="#FFFFFF" name="close" size={20} />
         </Pressable>
       </View>
 
@@ -400,10 +468,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(2, 6, 23, 0.88)",
   },
-  topToolbar: {
+  topToolbarRow: {
     position: "absolute",
     zIndex: 25,
     flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  topToolbarLeftGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 1,
     gap: TOP_TOOLBAR_GAP,
   },
   iconButton: {
@@ -420,6 +495,31 @@ const styles = StyleSheet.create({
   },
   iconButtonDisabled: {
     opacity: 0.5,
+  },
+  timeBadge: {
+    minWidth: 110,
+    minHeight: TOP_TOOLBAR_BUTTON_SIZE,
+    paddingHorizontal: 14,
+    borderRadius: TOP_TOOLBAR_BUTTON_SIZE / 2,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 25,
+  },
+  timeBadgePrimary: {
+    backgroundColor: "rgba(37, 99, 235, 0.92)",
+    borderColor: "rgba(191, 219, 254, 0.6)",
+  },
+  timeBadgeSecondary: {
+    backgroundColor: "rgba(17, 24, 39, 0.82)",
+    borderColor: "rgba(148, 163, 184, 0.35)",
+  },
+  timeBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0.2,
+    fontVariant: ["tabular-nums"],
   },
   playerViewport: {
     flex: 1,

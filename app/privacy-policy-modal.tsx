@@ -4,7 +4,7 @@ import { WebView } from "react-native-webview";
 
 import { PRIVACY_POLICY_URL } from "../src/config/app-links";
 
-// Renders the in-app popup that displays the privacy policy URL inside a web view.
+// 웹뷰 안에 개인정보처리방침 URL을 표시하는 인앱 팝업을 렌더링한다.
 export default function PrivacyPolicyModalScreen() {
   const router = useRouter();
   const { width, height } = useWindowDimensions();

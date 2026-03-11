@@ -47,7 +47,7 @@ const NativeAndroidQrScannerView =
     ? requireNativeComponent<AndroidQrScannerViewProps>("AndroidQrScannerView")
     : null;
 
-// Renders the Android-only CameraX and ML Kit scanner view when available.
+// 사용 가능할 때 안드로이드 전용 CameraX 및 ML Kit 스캐너 뷰를 렌더링한다.
 export function AndroidQrScannerView(props: AndroidQrScannerViewProps) {
   if (!NativeAndroidQrScannerView) {
     return <View {...props} />;

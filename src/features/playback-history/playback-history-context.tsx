@@ -41,19 +41,19 @@ const PlaybackHistoryContext = createContext<PlaybackHistoryContextValue | null>
 let historyEntryCounter = 0;
 let replayRequestCounter = 0;
 
-// Creates a unique id for each playback history row.
+// 각 재생 히스토리 행에 사용할 고유 ID를 만든다.
 function createHistoryEntryId(): string {
   historyEntryCounter += 1;
   return `history-${Date.now()}-${historyEntryCounter}`;
 }
 
-// Creates a unique id for a queued replay request.
+// 대기 중인 재생 요청에 사용할 고유 ID를 만든다.
 function createReplayRequestId(): string {
   replayRequestCounter += 1;
   return `replay-${Date.now()}-${replayRequestCounter}`;
 }
 
-// Upserts a history row and keeps the most recently touched items at the top.
+// 히스토리 행을 추가 또는 갱신하고 최근에 갱신된 항목이 위에 오도록 유지한다.
 function upsertHistoryEntry(
   entries: PlaybackHistoryEntry[],
   input: RecordHistoryResultInput,
@@ -89,7 +89,7 @@ function upsertHistoryEntry(
   return { entries: nextEntries, historyId };
 }
 
-// Provides shared playback history state across the tab navigator.
+// 탭 내비게이터 전반에서 공유하는 재생 히스토리 상태를 제공한다.
 export function PlaybackHistoryProvider({
   children,
 }: PropsWithChildren): React.JSX.Element {
@@ -99,7 +99,7 @@ export function PlaybackHistoryProvider({
   const [pendingReplayRequest, setPendingReplayRequest] =
     useState<ReplayRequest | null>(null);
 
-  // Restores the persisted playback history before the app starts reading it.
+  // 앱이 재생 히스토리를 읽기 전에 저장된 값을 복원한다.
   useEffect(() => {
     let isActive = true;
 
@@ -120,7 +120,7 @@ export function PlaybackHistoryProvider({
     };
   }, []);
 
-  // Persists the current playback history whenever the in-memory list changes.
+  // 메모리 내 목록이 바뀔 때마다 현재 재생 히스토리를 저장한다.
   useEffect(() => {
     if (!isHistoryReady) {
       return;
@@ -129,7 +129,7 @@ export function PlaybackHistoryProvider({
     void saveStoredPlaybackHistory(historyRef.current);
   }, [history, isHistoryReady]);
 
-  // Records the latest result for a scanned or replayed URL.
+  // 스캔하거나 다시 재생한 URL의 최신 결과를 기록한다.
   function recordHistoryResult(input: RecordHistoryResultInput): string {
     const result = upsertHistoryEntry(historyRef.current, input);
     historyRef.current = result.entries;
@@ -137,7 +137,7 @@ export function PlaybackHistoryProvider({
     return result.historyId;
   }
 
-  // Queues a replay request so the scanner tab can reuse its existing player flow.
+  // 스캐너 탭이 기존 플레이어 흐름을 재사용할 수 있도록 재생 요청을 대기열에 넣는다.
   function requestReplay(historyId: string): void {
     const targetEntry = historyRef.current.find((entry) => entry.id === historyId);
     if (!targetEntry) return;
@@ -149,7 +149,7 @@ export function PlaybackHistoryProvider({
     });
   }
 
-  // Clears a replay request after the scanner tab starts handling it.
+  // 스캐너 탭이 처리를 시작하면 재생 요청을 비운다.
   function consumeReplayRequest(requestId: string): void {
     setPendingReplayRequest((current) => {
       if (!current || current.requestId !== requestId) {
@@ -176,7 +176,7 @@ export function PlaybackHistoryProvider({
   );
 }
 
-// Returns the shared playback history API for scanner and history tabs.
+// 스캐너 탭과 히스토리 탭에서 쓰는 공통 재생 히스토리 API를 반환한다.
 export function usePlaybackHistory(): PlaybackHistoryContextValue {
   const context = React.use(PlaybackHistoryContext);
   if (!context) {

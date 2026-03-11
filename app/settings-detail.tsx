@@ -1,6 +1,6 @@
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 
-// Renders the simple in-app settings screen with the animated mascot and message.
+// 애니메이션 마스코트와 안내 문구가 있는 간단한 인앱 설정 화면을 렌더링한다.
 export default function SettingsDetailScreen() {
   return (
     <ScrollView
