@@ -190,10 +190,15 @@ export function PlayerScreen() {
         dismissPlayer();
       };
 
-      Alert.alert("재생 오류", message, [{ text: "확인", onPress: dismissAlert }], {
-        cancelable: false,
-        onDismiss: dismissAlert,
-      });
+      Alert.alert(
+        "재생 오류",
+        message,
+        [{ text: "확인", onPress: dismissAlert }],
+        {
+          cancelable: false,
+          onDismiss: dismissAlert,
+        },
+      );
     },
     [
       dismissPlayer,
@@ -300,7 +305,10 @@ export function PlayerScreen() {
   const topToolbarTop = Math.max(12, insets.top + 8);
   const topReservedHeight =
     topToolbarTop + TOP_TOOLBAR_BUTTON_SIZE + PLAYER_VERTICAL_PADDING;
-  const bottomReservedHeight = Math.max(PLAYER_VERTICAL_PADDING, insets.bottom + 12);
+  const bottomReservedHeight = Math.max(
+    PLAYER_VERTICAL_PADDING,
+    insets.bottom + 12,
+  );
   const maxPlayerWidth = Math.max(0, width - PLAYER_HORIZONTAL_PADDING * 2);
   const fullWidthPlayerHeight = maxPlayerWidth / PLAYER_ASPECT_RATIO;
   const availablePlayerHeight = Math.max(
@@ -313,11 +321,15 @@ export function PlayerScreen() {
     Math.max(0, playerHeight * PLAYER_ASPECT_RATIO),
   );
   const playbackControlIconName =
-    playerUiState === "paused" || playerUiState === "blocked" || playerUiState === "loading"
+    playerUiState === "paused" ||
+    playerUiState === "blocked" ||
+    playerUiState === "loading"
       ? "play-arrow"
       : "pause";
   const playbackControlLabel =
-    playerUiState === "paused" || playerUiState === "blocked" || playerUiState === "loading"
+    playerUiState === "paused" ||
+    playerUiState === "blocked" ||
+    playerUiState === "loading"
       ? "재생"
       : "일시정지";
   const isPlaybackControlDisabled = playerUiState === "loading";
@@ -325,8 +337,7 @@ export function PlayerScreen() {
     playbackTiming.durationSeconds,
     playbackTiming.currentTimeSeconds,
   );
-  const totalDurationLabel = `총 ${formatPlaybackClock(playbackTiming.durationSeconds)}`;
-  const remainingDurationLabel = `남음 ${formatPlaybackClock(remainingPlaybackSeconds)}`;
+  const remainingDurationLabel = `${formatPlaybackClock(remainingPlaybackSeconds)}`;
 
   if (!isPlaybackSessionReady) {
     return <View style={styles.blank} />;
@@ -345,6 +356,41 @@ export function PlayerScreen() {
         ]}
       >
         <View style={styles.topToolbarLeftGroup}>
+          <View style={[styles.timeBadge, styles.timeBadgeSecondary]}>
+            <Text numberOfLines={1} selectable style={styles.timeBadgeText}>
+              {remainingDurationLabel}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.topToolbarRightGroup}>
+          <Pressable
+            accessibilityLabel={playbackControlLabel}
+            accessibilityRole="button"
+            disabled={isPlaybackControlDisabled}
+            onPress={() => {
+              if (playerUiState === "paused" || playerUiState === "blocked") {
+                sendPlayerCommand("__YT_PLAY__");
+                return;
+              }
+
+              sendPlayerCommand("__YT_PAUSE__");
+            }}
+            style={({ pressed }) => [
+              styles.iconButton,
+              isPlaybackControlDisabled && styles.iconButtonDisabled,
+              pressed && !isPlaybackControlDisabled
+                ? styles.iconButtonPressed
+                : undefined,
+            ]}
+          >
+            <MaterialIcons
+              color="#FFFFFF"
+              name={playbackControlIconName}
+              size={22}
+            />
+          </Pressable>
+
           <Pressable
             accessibilityLabel="닫기"
             accessibilityRole="button"
@@ -356,44 +402,7 @@ export function PlayerScreen() {
           >
             <MaterialIcons color="#FFFFFF" name="close" size={20} />
           </Pressable>
-
-          <View style={[styles.timeBadge, styles.timeBadgePrimary]}>
-            <Text numberOfLines={1} selectable style={styles.timeBadgeText}>
-              {totalDurationLabel}
-            </Text>
-          </View>
-
-          <View style={[styles.timeBadge, styles.timeBadgeSecondary]}>
-            <Text numberOfLines={1} selectable style={styles.timeBadgeText}>
-              {remainingDurationLabel}
-            </Text>
-          </View>
         </View>
-
-        <Pressable
-          accessibilityLabel={playbackControlLabel}
-          accessibilityRole="button"
-          disabled={isPlaybackControlDisabled}
-          onPress={() => {
-            if (playerUiState === "paused" || playerUiState === "blocked") {
-              sendPlayerCommand("__YT_PLAY__");
-              return;
-            }
-
-            sendPlayerCommand("__YT_PAUSE__");
-          }}
-          style={({ pressed }) => [
-            styles.iconButton,
-            isPlaybackControlDisabled && styles.iconButtonDisabled,
-            pressed && !isPlaybackControlDisabled ? styles.iconButtonPressed : undefined,
-          ]}
-        >
-          <MaterialIcons
-            color="#FFFFFF"
-            name={playbackControlIconName}
-            size={22}
-          />
-        </Pressable>
       </View>
 
       <View
@@ -447,12 +456,12 @@ export function PlayerScreen() {
       </View>
 
       {shouldBlockAppTouch ? (
-          <Pressable
-            style={styles.appTouchBlocker}
-            onPress={() => {}}
-            accessibilityLabel="app-touch-blocker"
-          />
-        ) : null}
+        <Pressable
+          style={styles.appTouchBlocker}
+          onPress={() => {}}
+          accessibilityLabel="app-touch-blocker"
+        />
+      ) : null}
 
       {loadingOverlay}
     </View>
@@ -481,6 +490,11 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     gap: TOP_TOOLBAR_GAP,
   },
+  topToolbarRightGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: TOP_TOOLBAR_GAP,
+  },
   iconButton: {
     width: TOP_TOOLBAR_BUTTON_SIZE,
     height: TOP_TOOLBAR_BUTTON_SIZE,
@@ -497,10 +511,10 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   timeBadge: {
-    minWidth: 110,
+    minWidth: 100,
     minHeight: TOP_TOOLBAR_BUTTON_SIZE,
-    paddingHorizontal: 14,
-    borderRadius: TOP_TOOLBAR_BUTTON_SIZE / 2,
+    paddingHorizontal: 7,
+    borderRadius: 8,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
