@@ -14,6 +14,7 @@ import {
 
 import { SERVICE_CONTACT_EMAIL } from "../../src/config/app-links";
 import { useFloatingTabBarMetrics } from "../../src/features/floating-tab-bar/floating-tab-bar-context";
+import { usePlaybackReturnSetting } from "../../src/features/settings/playback-return-setting-context";
 import {
   DEFAULT_SCANNER_FACING,
   getDefaultScannerFacing,
@@ -35,6 +36,7 @@ type SettingsRowProps = {
 
 type SettingsSwitchRowProps = {
   currentValueLabel: string;
+  description: string;
   disabled?: boolean;
   isEnabled: boolean;
   label: string;
@@ -90,6 +92,7 @@ function SettingsRow({ label, value, onPress }: SettingsRowProps) {
 // 탭 가능한 컨테이너와 현재 값 라벨을 갖춘 스위치형 설정 행을 렌더링한다.
 function SettingsSwitchRow({
   currentValueLabel,
+  description,
   disabled,
   isEnabled,
   label,
@@ -113,7 +116,7 @@ function SettingsSwitchRow({
           {label}
         </Text>
         <Text selectable style={styles.rowCaption}>
-          전면 활성화 · 끄면 후면
+          {description}
         </Text>
       </View>
 
@@ -140,6 +143,13 @@ function SettingsSwitchRow({
 export default function SettingsScreen() {
   const router = useRouter();
   const { reservedBottomSpace } = useFloatingTabBarMetrics();
+  const {
+    isPlaybackReturnSettingAvailable,
+    isPlaybackReturnSettingReady,
+    isSavingPlaybackReturnSetting,
+    shouldReturnAfterPlayback,
+    updateShouldReturnAfterPlayback,
+  } = usePlaybackReturnSetting();
   const isDefaultCameraStorageReady = isDefaultCameraStorageAvailable();
   const [defaultCameraFacing, setDefaultCameraFacingState] =
     useState<ScannerFacing>(DEFAULT_SCANNER_FACING);
@@ -200,6 +210,28 @@ export default function SettingsScreen() {
     [defaultCameraFacing],
   );
 
+  // 설정 스위치를 바꿀 때 영상 종료 후 복귀 동작을 갱신하고 저장한다.
+  const handlePlaybackReturnToggle = useCallback(
+    async (nextValue: boolean) => {
+      if (nextValue === shouldReturnAfterPlayback) {
+        return;
+      }
+
+      try {
+        await updateShouldReturnAfterPlayback(nextValue);
+      } catch {
+        Alert.alert(
+          "저장할 수 없습니다",
+          "영상재생 후 돌아가기 설정을 저장하지 못했습니다.",
+        );
+      }
+    },
+    [shouldReturnAfterPlayback, updateShouldReturnAfterPlayback],
+  );
+
+  const isStorageWarningVisible =
+    !isDefaultCameraStorageReady || !isPlaybackReturnSettingAvailable;
+
   return (
     <View style={styles.screen}>
       <View style={styles.backgroundOrbPrimary} />
@@ -248,6 +280,7 @@ export default function SettingsScreen() {
             currentValueLabel={
               defaultCameraFacing === "front" ? "전면" : "후면"
             }
+            description="전면 활성화 · 끄면 후면"
             disabled={
               isSavingDefaultCameraFacing || !isDefaultCameraStorageReady
             }
@@ -257,7 +290,22 @@ export default function SettingsScreen() {
               void handleDefaultCameraToggle(nextValue);
             }}
           />
-          {!isDefaultCameraStorageReady ? (
+          <View style={styles.divider} />
+          <SettingsSwitchRow
+            currentValueLabel={shouldReturnAfterPlayback ? "자동" : "직접 선택"}
+            description="활성화 시 재생이 끝나면 바로 이전 화면으로 돌아갑니다"
+            disabled={
+              isSavingPlaybackReturnSetting ||
+              !isPlaybackReturnSettingReady ||
+              !isPlaybackReturnSettingAvailable
+            }
+            isEnabled={shouldReturnAfterPlayback}
+            label="영상재생 후 돌아가기"
+            onValueChange={(nextValue) => {
+              void handlePlaybackReturnToggle(nextValue);
+            }}
+          />
+          {isStorageWarningVisible ? (
             <Text selectable style={[styles.rowCaption, styles.storageWarning]}>
               현재 설치된 안드로이드 앱에는 저장 모듈이 없어 재설치가
               필요합니다.

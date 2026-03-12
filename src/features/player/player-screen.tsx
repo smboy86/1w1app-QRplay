@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
 import { usePlaybackHistory } from "../playback-history/playback-history-context";
+import { usePlaybackReturnSetting } from "../settings/playback-return-setting-context";
 import { buildYoutubeHtml } from "../../lib/buildYoutubeHtml";
 import {
   mapYouTubeError,
@@ -93,6 +94,8 @@ export function PlayerScreen() {
   const { height, width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { recordHistoryResult } = usePlaybackHistory();
+  const { isPlaybackReturnSettingReady, shouldReturnAfterPlayback } =
+    usePlaybackReturnSetting();
   const params = useLocalSearchParams<{
     historyId?: string | string[];
     preserveHistoryPosition?: string | string[];
@@ -108,6 +111,7 @@ export function PlayerScreen() {
   const videoId = readSearchParam(params.videoId);
   const [playerUiState, setPlayerUiState] = useState<PlayerUiState>("loading");
   const [isLoadingOverlayVisible, setIsLoadingOverlayVisible] = useState(true);
+  const [didPlaybackReachEnd, setDidPlaybackReachEnd] = useState(false);
   const [playbackTiming, setPlaybackTiming] = useState<PlaybackTiming>({
     durationSeconds: null,
     currentTimeSeconds: 0,
@@ -123,7 +127,13 @@ export function PlayerScreen() {
 
   // 내장 WebView 플레이어에 유튜브 브리지 명령을 보낸다.
   const sendPlayerCommand = useCallback(
-    (fnName: "__YT_PLAY__" | "__YT_PAUSE__" | "__YT_STOP__") => {
+    (
+      fnName:
+        | "__YT_PLAY__"
+        | "__YT_PAUSE__"
+        | "__YT_REPLAY__"
+        | "__YT_STOP__",
+    ) => {
       webViewRef.current?.injectJavaScript(`
         if (window.${fnName}) {
           window.${fnName}();
@@ -156,6 +166,17 @@ export function PlayerScreen() {
     },
     [dismissPlayer, sendPlayerCommand],
   );
+
+  // 재생 종료 후 같은 영상을 처음부터 다시 시작한다.
+  const replayPlayback = useCallback(() => {
+    setDidPlaybackReachEnd(false);
+    setPlayerUiState("playing");
+    setPlaybackTiming((current) => ({
+      ...current,
+      currentTimeSeconds: 0,
+    }));
+    sendPlayerCommand("__YT_REPLAY__");
+  }, [sendPlayerCommand]);
 
   // 재생 실패를 기록하고 차단 알림을 띄운 뒤 확인 후 복귀한다.
   const handlePlaybackFailure = useCallback(
@@ -236,6 +257,24 @@ export function PlayerScreen() {
     }
   }, [playerUiState]);
 
+  useEffect(() => {
+    if (!didPlaybackReachEnd || !isPlaybackReturnSettingReady) {
+      return;
+    }
+
+    if (shouldReturnAfterPlayback) {
+      closePlayer(false);
+      return;
+    }
+
+    setPlayerUiState("ended");
+  }, [
+    closePlayer,
+    didPlaybackReachEnd,
+    isPlaybackReturnSettingReady,
+    shouldReturnAfterPlayback,
+  ]);
+
   // 유튜브 iframe의 브리지 이벤트를 네이티브 재생 제어에 반영한다.
   const handlePlayerMessage = useCallback(
     (event: WebViewMessageEvent) => {
@@ -256,6 +295,7 @@ export function PlayerScreen() {
           setPlayerUiState((state) => (state === "loading" ? "paused" : state));
           return;
         case "playing":
+          setDidPlaybackReachEnd(false);
           setPlayerUiState("playing");
           return;
         case "paused":
@@ -274,7 +314,13 @@ export function PlayerScreen() {
           }));
           return;
         case "ended":
-          closePlayer(false);
+          setPlaybackTiming((current) => ({
+            ...current,
+            currentTimeSeconds:
+              current.durationSeconds ?? current.currentTimeSeconds,
+          }));
+          setPlayerUiState("paused");
+          setDidPlaybackReachEnd(true);
           return;
         case "error":
           handlePlaybackFailure(mapYouTubeError(message.payload?.code));
@@ -284,7 +330,7 @@ export function PlayerScreen() {
           return;
       }
     },
-    [closePlayer, handlePlaybackFailure],
+    [handlePlaybackFailure],
   );
 
   const loadingOverlay = isLoadingOverlayVisible ? (
@@ -298,6 +344,7 @@ export function PlayerScreen() {
   ) : null;
 
   const isPlaying = playerUiState === "playing";
+  const isPlaybackCompletionStepVisible = playerUiState === "ended";
   const shouldBlockPlayerAreaTouch =
     isPlaying && PLAYBACK_TOUCH_BLOCK_SCOPE === "player";
   const shouldBlockAppTouch = isPlaying && PLAYBACK_TOUCH_BLOCK_SCOPE === "app";
@@ -321,12 +368,14 @@ export function PlayerScreen() {
     Math.max(0, playerHeight * PLAYER_ASPECT_RATIO),
   );
   const playbackControlIconName =
+    playerUiState === "ended" ||
     playerUiState === "paused" ||
     playerUiState === "blocked" ||
     playerUiState === "loading"
       ? "play-arrow"
       : "pause";
   const playbackControlLabel =
+    playerUiState === "ended" ||
     playerUiState === "paused" ||
     playerUiState === "blocked" ||
     playerUiState === "loading"
@@ -345,65 +394,70 @@ export function PlayerScreen() {
 
   return (
     <View style={styles.container}>
-      <View
-        style={[
-          styles.topToolbarRow,
-          {
-            top: topToolbarTop,
-            left: TOP_TOOLBAR_MARGIN,
-            right: TOP_TOOLBAR_MARGIN,
-          },
-        ]}
-      >
-        <View style={styles.topToolbarLeftGroup}>
-          <View style={[styles.timeBadge, styles.timeBadgeSecondary]}>
-            <Text numberOfLines={1} selectable style={styles.timeBadgeText}>
-              {remainingDurationLabel}
-            </Text>
+      {!isPlaybackCompletionStepVisible ? (
+        <View
+          style={[
+            styles.topToolbarRow,
+            {
+              top: topToolbarTop,
+              left: TOP_TOOLBAR_MARGIN,
+              right: TOP_TOOLBAR_MARGIN,
+            },
+          ]}
+        >
+          <View style={styles.topToolbarLeftGroup}>
+            <View style={[styles.timeBadge, styles.timeBadgeSecondary]}>
+              <Text numberOfLines={1} selectable style={styles.timeBadgeText}>
+                {remainingDurationLabel}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.topToolbarRightGroup}>
+            <Pressable
+              accessibilityLabel={playbackControlLabel}
+              accessibilityRole="button"
+              disabled={isPlaybackControlDisabled}
+              onPress={() => {
+                if (
+                  playerUiState === "paused" ||
+                  playerUiState === "blocked"
+                ) {
+                  sendPlayerCommand("__YT_PLAY__");
+                  return;
+                }
+
+                sendPlayerCommand("__YT_PAUSE__");
+              }}
+              style={({ pressed }) => [
+                styles.iconButton,
+                isPlaybackControlDisabled && styles.iconButtonDisabled,
+                pressed && !isPlaybackControlDisabled
+                  ? styles.iconButtonPressed
+                  : undefined,
+              ]}
+            >
+              <MaterialIcons
+                color="#FFFFFF"
+                name={playbackControlIconName}
+                size={22}
+              />
+            </Pressable>
+
+            <Pressable
+              accessibilityLabel="닫기"
+              accessibilityRole="button"
+              onPress={() => closePlayer()}
+              style={({ pressed }) => [
+                styles.iconButton,
+                pressed ? styles.iconButtonPressed : undefined,
+              ]}
+            >
+              <MaterialIcons color="#FFFFFF" name="close" size={20} />
+            </Pressable>
           </View>
         </View>
-
-        <View style={styles.topToolbarRightGroup}>
-          <Pressable
-            accessibilityLabel={playbackControlLabel}
-            accessibilityRole="button"
-            disabled={isPlaybackControlDisabled}
-            onPress={() => {
-              if (playerUiState === "paused" || playerUiState === "blocked") {
-                sendPlayerCommand("__YT_PLAY__");
-                return;
-              }
-
-              sendPlayerCommand("__YT_PAUSE__");
-            }}
-            style={({ pressed }) => [
-              styles.iconButton,
-              isPlaybackControlDisabled && styles.iconButtonDisabled,
-              pressed && !isPlaybackControlDisabled
-                ? styles.iconButtonPressed
-                : undefined,
-            ]}
-          >
-            <MaterialIcons
-              color="#FFFFFF"
-              name={playbackControlIconName}
-              size={22}
-            />
-          </Pressable>
-
-          <Pressable
-            accessibilityLabel="닫기"
-            accessibilityRole="button"
-            onPress={() => closePlayer()}
-            style={({ pressed }) => [
-              styles.iconButton,
-              pressed ? styles.iconButtonPressed : undefined,
-            ]}
-          >
-            <MaterialIcons color="#FFFFFF" name="close" size={20} />
-          </Pressable>
-        </View>
-      </View>
+      ) : null}
 
       <View
         style={[
@@ -461,6 +515,65 @@ export function PlayerScreen() {
           onPress={() => {}}
           accessibilityLabel="app-touch-blocker"
         />
+      ) : null}
+
+      {isPlaybackCompletionStepVisible ? (
+        <View style={styles.completionOverlay}>
+          <View style={styles.completionCard}>
+            <Text selectable style={styles.completionTitle}>
+              영상 재생이 끝났습니다
+            </Text>
+            <Text selectable style={styles.completionDescription}>
+              다시 보거나 화면을 닫을 수 있습니다.
+            </Text>
+
+            <View style={styles.completionActionRow}>
+              <Pressable
+                accessibilityLabel="다시보기"
+                accessibilityRole="button"
+                onPress={replayPlayback}
+                style={({ pressed }) => [
+                  styles.completionAction,
+                  pressed ? styles.completionActionPressed : undefined,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.completionActionIconShell,
+                    styles.completionActionPrimary,
+                  ]}
+                >
+                  <MaterialIcons color="#FFFFFF" name="replay" size={28} />
+                </View>
+                <Text selectable style={styles.completionActionLabel}>
+                  다시보기
+                </Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityLabel="닫기"
+                accessibilityRole="button"
+                onPress={() => closePlayer(false)}
+                style={({ pressed }) => [
+                  styles.completionAction,
+                  pressed ? styles.completionActionPressed : undefined,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.completionActionIconShell,
+                    styles.completionActionSecondary,
+                  ]}
+                >
+                  <MaterialIcons color="#FFFFFF" name="close" size={28} />
+                </View>
+                <Text selectable style={styles.completionActionLabel}>
+                  닫기
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
       ) : null}
 
       {loadingOverlay}
@@ -584,5 +697,73 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     zIndex: 25,
     elevation: 25,
+  },
+  completionOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(2, 6, 23, 0.72)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    zIndex: 28,
+    elevation: 28,
+  },
+  completionCard: {
+    width: "100%",
+    maxWidth: 320,
+    borderRadius: 24,
+    borderCurve: "continuous",
+    backgroundColor: "rgba(15, 23, 42, 0.94)",
+    paddingHorizontal: 22,
+    paddingVertical: 24,
+    alignItems: "center",
+    gap: 10,
+    boxShadow: "0 24px 64px rgba(0, 0, 0, 0.36)",
+  },
+  completionTitle: {
+    color: "#FFFFFF",
+    fontSize: 20,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  completionDescription: {
+    color: "#CBD5E1",
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  completionActionRow: {
+    width: "100%",
+    marginTop: 10,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 18,
+  },
+  completionAction: {
+    minWidth: 96,
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 6,
+    borderRadius: 18,
+  },
+  completionActionPressed: {
+    opacity: 0.85,
+  },
+  completionActionIconShell: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  completionActionPrimary: {
+    backgroundColor: "#2563EB",
+  },
+  completionActionSecondary: {
+    backgroundColor: "rgba(71, 85, 105, 0.92)",
+  },
+  completionActionLabel: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
   },
 });

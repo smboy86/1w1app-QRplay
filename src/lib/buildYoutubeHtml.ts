@@ -124,6 +124,7 @@ export function buildYoutubeHtml(videoId: string, appOrigin: string, autoplay = 
               window.__YT_PLAY__ = function() {
                 if (!player) return;
                 pausedByApp = false;
+                ensureProgressTimer();
                 player.playVideo();
                 publishPlaybackSnapshot(true);
               };
@@ -142,6 +143,16 @@ export function buildYoutubeHtml(videoId: string, appOrigin: string, autoplay = 
                 });
                 publishPlaybackSnapshot(true);
                 send("paused");
+              };
+              window.__YT_REPLAY__ = function() {
+                if (!player) return;
+                pausedByApp = false;
+                ensureProgressTimer();
+                if (typeof player.seekTo === "function") {
+                  player.seekTo(0, true);
+                }
+                player.playVideo();
+                publishPlaybackSnapshot(true);
               };
               window.__YT_STOP__ = function() {
                 if (!player) return;
@@ -166,7 +177,10 @@ export function buildYoutubeHtml(videoId: string, appOrigin: string, autoplay = 
               send("state", { state: event.data });
               publishPlaybackSnapshot(true);
 
-              if (event.data === YT.PlayerState.PLAYING) send("playing");
+              if (event.data === YT.PlayerState.PLAYING) {
+                ensureProgressTimer();
+                send("playing");
+              }
               if (event.data === YT.PlayerState.PAUSED && !pausedByApp) send("paused");
               if (event.data === YT.PlayerState.ENDED) {
                 clearProgressTimer();

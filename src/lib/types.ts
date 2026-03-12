@@ -1,4 +1,11 @@
-export type PlayerUiState = "idle" | "loading" | "playing" | "paused" | "blocked" | "error";
+export type PlayerUiState =
+  | "idle"
+  | "loading"
+  | "playing"
+  | "paused"
+  | "blocked"
+  | "ended"
+  | "error";
 
 export type BridgeMessage =
   | { type: "ready"; payload: null }
