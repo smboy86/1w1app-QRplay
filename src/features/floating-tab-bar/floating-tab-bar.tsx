@@ -1,5 +1,4 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -22,6 +21,37 @@ const tabBarIndicatorColor = "#3F3300";
 type FloatingTabBarItemConfig = {
   iconName: React.ComponentProps<typeof MaterialIcons>["name"];
   label: string;
+};
+
+type FloatingTabRoute = {
+  key: string;
+  name: string;
+  params?: object;
+};
+
+type FloatingTabDescriptor = {
+  options: {
+    tabBarAccessibilityLabel?: string;
+    tabBarButtonTestID?: string;
+    tabBarLabel?: unknown;
+    title?: unknown;
+  };
+};
+
+type FloatingTabBarProps = {
+  descriptors: Record<string, FloatingTabDescriptor>;
+  navigation: {
+    emit: (event: {
+      canPreventDefault?: boolean;
+      target: string;
+      type: "tabLongPress" | "tabPress";
+    }) => unknown;
+    navigate: (name: string, params?: object) => void;
+  };
+  state: {
+    index: number;
+    routes: FloatingTabRoute[];
+  };
 };
 
 const TAB_ITEM_CONFIG: Record<string, FloatingTabBarItemConfig> = {
@@ -65,7 +95,7 @@ export function FloatingTabBar({
   state,
   descriptors,
   navigation,
-}: BottomTabBarProps): React.JSX.Element | null {
+}: FloatingTabBarProps): React.JSX.Element | null {
   const { isVisible } = useFloatingTabBarVisibility();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -127,7 +157,7 @@ export function FloatingTabBar({
                   type: "tabPress",
                   target: route.key,
                   canPreventDefault: true,
-                });
+                }) as { defaultPrevented?: boolean };
 
                 if (isFocused || event.defaultPrevented) {
                   return;
@@ -169,7 +199,7 @@ export function FloatingTabBar({
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "flex-end",
   },

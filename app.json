@@ -41,7 +41,9 @@
         }
       ],
       "expo-router",
-      "./plugins/with-android16-orientation-compat"
+      "./plugins/with-android16-orientation-compat",
+      "expo-font",
+      "expo-status-bar"
     ],
     "web": {
       "favicon": "./assets/favicon.png"

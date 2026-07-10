@@ -528,7 +528,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(236, 242, 248, 0.72)",
     justifyContent: "center",
     alignItems: "center",

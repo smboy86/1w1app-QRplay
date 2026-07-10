@@ -660,7 +660,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#000000",
   },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0, 0, 0, 0.6)",
     justifyContent: "center",
     alignItems: "center",
@@ -687,19 +687,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   playerTouchBlocker: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "transparent",
     zIndex: 20,
     elevation: 20,
   },
   appTouchBlocker: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "transparent",
     zIndex: 25,
     elevation: 25,
   },
   completionOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(2, 6, 23, 0.72)",
     justifyContent: "center",
     alignItems: "center",

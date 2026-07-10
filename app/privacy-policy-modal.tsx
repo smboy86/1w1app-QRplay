@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(10, 19, 31, 0.32)",
   },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   modalCard: {
     borderRadius: 28,

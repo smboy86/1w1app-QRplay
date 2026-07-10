@@ -21,7 +21,6 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useIsFocused } from "@react-navigation/native";
 import {
   CameraView,
   type BarcodeScanningResult,
@@ -110,8 +109,8 @@ function ScannerScreen() {
   const [isRearCameraSuggestionVisible, setIsRearCameraSuggestionVisible] =
     useState(false);
   const [isScannerHintCollapsed, setIsScannerHintCollapsed] = useState(false);
+  const [isScreenFocused, setIsScreenFocused] = useState(false);
   const router = useRouter();
-  const isScreenFocused = useIsFocused();
   const { reservedBottomSpace } = useFloatingTabBarMetrics();
   const { height, width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -178,10 +177,15 @@ function ScannerScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setIsScreenFocused(true);
       setIsLoadingOverlayVisible(false);
       scanLockedRef.current = false;
       alertVisibleRef.current = false;
       resetScannerAssist();
+
+      return () => {
+        setIsScreenFocused(false);
+      };
     }, [resetScannerAssist]),
   );
 
@@ -1060,7 +1064,7 @@ const styles = StyleSheet.create({
     opacity: 0.86,
   },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(2, 6, 23, 0.62)",
     justifyContent: "center",
     alignItems: "center",
