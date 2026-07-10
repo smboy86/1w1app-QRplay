@@ -11,24 +11,31 @@ const YT_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 const YOUTUBE_URL_RE =
   /https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/[^\s"'<>]+|youtu\.be\/[^\s"'<>]+)/gi;
 
-// Normalizes a hostname so supported-host checks stay consistent across URL shapes.
+type LandingPageHtmlResult = {
+  finalUrl: string;
+  html: string;
+};
+
+// 호스트 비교가 URL 모양에 흔들리지 않도록 호스트 이름을 정규화한다.
 function normalizeHost(hostname: string): string {
   return hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
 }
 
-// Checks whether a hostname belongs to a supported landing-page provider.
+// 지원 대상 랜딩 페이지 제공자에 속한 호스트인지 확인한다.
 export function isSupportedLandingPageHost(hostname: string | null | undefined): boolean {
   if (!hostname) return false;
   return normalizeHost(hostname) === "site.naver.com";
 }
 
-// Builds a canonical watch URL from a confirmed YouTube video id.
+// 확인된 유튜브 영상 ID로 표준 watch URL을 만든다.
 function buildCanonicalYouTubeUrl(videoId: string): string {
   return `https://www.youtube.com/watch?v=${videoId}`;
 }
 
-// Downloads landing-page HTML with a timeout so page parsing cannot block forever.
-async function fetchLandingPageHtml(url: string): Promise<string | null> {
+// 랜딩 페이지 HTML과 fetch가 따라간 최종 URL을 함께 가져온다.
+async function fetchLandingPageHtml(
+  url: string,
+): Promise<LandingPageHtmlResult | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -46,13 +53,16 @@ async function fetchLandingPageHtml(url: string): Promise<string | null> {
       return null;
     }
 
-    return await response.text();
+    return {
+      finalUrl: response.url,
+      html: await response.text(),
+    };
   } finally {
     clearTimeout(timeout);
   }
 }
 
-// Decodes nested HTML entities often found inside server-rendered JSON payloads.
+// 서버 렌더링 JSON 문자열 안에 중첩된 HTML 엔티티를 해제한다.
 function decodeHtmlEntities(input: string): string {
   let current = input;
 
@@ -74,7 +84,7 @@ function decodeHtmlEntities(input: string): string {
   return current;
 }
 
-// Extracts the Next.js data payload embedded in a landing page HTML document.
+// 랜딩 페이지 HTML 안에 포함된 Next.js 데이터 페이로드를 추출한다.
 function extractNextDataPayload(html: string): unknown | null {
   const match = html.match(NEXT_DATA_RE);
   if (!match?.[1]) {
@@ -88,7 +98,7 @@ function extractNextDataPayload(html: string): unknown | null {
   }
 }
 
-// Adds YouTube URL strings found in a text value to the candidate set.
+// 텍스트 값 안에서 발견한 유튜브 URL 문자열을 후보 목록에 추가한다.
 function collectYouTubeUrlCandidates(value: string, target: Set<string>): void {
   const variants = [value, decodeHtmlEntities(value)];
 
@@ -113,7 +123,7 @@ function collectYouTubeUrlCandidates(value: string, target: Set<string>): void {
   }
 }
 
-// Recursively walks structured page data and collects supported YouTube signals.
+// 구조화된 페이지 데이터를 재귀 순회하면서 지원 가능한 유튜브 신호를 수집한다.
 function collectLandingPageCandidates(
   value: unknown,
   key: string | null,
@@ -155,7 +165,7 @@ function collectLandingPageCandidates(
   }
 }
 
-// Resolves a single playable video id from a set of YouTube URL candidates.
+// 유튜브 URL 후보 목록에서 단일 재생 가능 영상 ID를 결정한다.
 function resolveVideoIdFromUrlCandidates(
   urlCandidates: Set<string>,
 ): LandingPageResolveResult {
@@ -186,7 +196,7 @@ function resolveVideoIdFromUrlCandidates(
   };
 }
 
-// Resolves a supported landing page into a single playable YouTube video target.
+// 지원 대상 랜딩 페이지를 단일 재생 가능 유튜브 영상으로 해석한다.
 export async function resolveLandingPageYouTube(
   input: string,
 ): Promise<LandingPageResolveResult> {
@@ -209,18 +219,27 @@ export async function resolveLandingPageYouTube(
     return { ok: false, reason: "UNSUPPORTED_HOST" };
   }
 
-  let html: string | null;
+  let pageResult: LandingPageHtmlResult | null;
   try {
-    html = await fetchLandingPageHtml(raw);
+    pageResult = await fetchLandingPageHtml(raw);
   } catch {
     return { ok: false, reason: "NETWORK" };
   }
 
-  if (!html) {
+  if (!pageResult) {
     return { ok: false, reason: "NETWORK" };
   }
 
-  const nextDataPayload = extractNextDataPayload(html);
+  const finalUrlResult = extractYouTubeId(pageResult.finalUrl);
+  if (finalUrlResult.ok) {
+    return {
+      ok: true,
+      youtubeUrl: buildCanonicalYouTubeUrl(finalUrlResult.videoId),
+      videoId: finalUrlResult.videoId,
+    };
+  }
+
+  const nextDataPayload = extractNextDataPayload(pageResult.html);
   if (!nextDataPayload || typeof nextDataPayload !== "object") {
     return { ok: false, reason: "INVALID_HTML" };
   }

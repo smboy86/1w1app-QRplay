@@ -108,6 +108,12 @@ async function resolvePlaybackInputInternal(
 
   if (!result.ok && result.reason === "NOT_YOUTUBE") {
     const sourceHost = getHostFromUrl(sourceUrl);
+    let landingPageFailure:
+      | {
+          finalUrl: string;
+          reason: "UNSUPPORTED_HOST" | "INVALID_HTML" | "NOT_FOUND" | "MULTIPLE";
+        }
+      | null = null;
     finalUrl = await resolveFinalUrl(sourceUrl);
     console.log("[PLAYBACK] resolved final URL:", finalUrl);
 
@@ -149,11 +155,10 @@ async function resolvePlaybackInputInternal(
           };
         }
 
-        return createLandingPageFailureResult(
-          sourceUrl,
+        landingPageFailure = {
           finalUrl,
-          landingPageResult.reason,
-        );
+          reason: landingPageResult.reason,
+        };
       }
 
       const shouldUseWebViewFallback =
@@ -168,6 +173,14 @@ async function resolvePlaybackInputInternal(
           finalUrl = webViewResolvedUrl;
           result = extractYouTubeId(finalUrl);
         }
+      }
+
+      if (!result.ok && landingPageFailure) {
+        return createLandingPageFailureResult(
+          sourceUrl,
+          landingPageFailure.finalUrl,
+          landingPageFailure.reason,
+        );
       }
     }
   }
