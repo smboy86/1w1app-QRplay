@@ -12,6 +12,7 @@ import {
 
 import { useFloatingTabBarMetrics } from "../../src/features/floating-tab-bar/floating-tab-bar-context";
 import { usePlaybackInputResolver } from "../../src/features/player/use-playback-input-resolver";
+import { reportUnsupportedQrSource } from "../../src/features/player/report-unsupported-qr-source";
 import { usePlaybackHistory } from "../../src/features/playback-history/playback-history-context";
 import { extractYouTubeId } from "../../src/lib/extractYouTubeId";
 import type { PlaybackHistoryEntry } from "../../src/lib/types";
@@ -83,6 +84,12 @@ export default function HistoryScreen() {
             incrementPlayCount: false,
             preserveUpdatedAt: true,
           });
+          if (result.failureKind === "UNSUPPORTED_SOURCE") {
+            reportUnsupportedQrSource({
+              sourceUrl: result.sourceUrl,
+              finalUrl: result.finalUrl,
+            });
+          }
           setIsReplayLoading(false);
           Alert.alert(result.title, result.message);
           return;

@@ -58,14 +58,13 @@
 ## 5. Error Handling And Validation
 - Camera permission denied:
   - Show permission helper UI with retry
-- Direct YouTube parse failure:
-  - Show existing validation message
-- Landing page network failure:
-  - Show existing network error message
-- Landing page without playable target:
-  - Show page-level unsupported message
-- Landing page with multiple videos:
-  - Show single-video-only message
+- QR input that cannot be interpreted as a URL or playable video ID:
+  - Show `재생할 수 없는 QR코드 입니다`
+- QR input that can be interpreted as a URL/domain but is not currently supported:
+  - Show `현재 앱 내에서 지원하지 않는 QR코드 출처로 확인되었습니다. 매니저에게 해당 내용을 전달하고, 빠르게 지원할 수 있도록 최선을 다하겠습니다. 사용해주셔서 감사합니다`
+- Unsupported-source reporting by email:
+  - Show the unsupported-source alert and then fire-and-forget a report to the Google Apps Script endpoint
+  - Do not expose report delivery success or failure in the app UI
 - YouTube embed blocked or playback failure:
   - Keep existing playback error handling
 
@@ -76,7 +75,7 @@
   - Existing direct YouTube QR still plays
   - Redirect-based QR still resolves and plays
   - `https://m.site.naver.com/1QyHZ` resolves to video `oS4Rm61pJ9k`
-  - Supported landing page with no YouTube candidate shows unsupported-page alert
-  - Supported landing page with multiple unique YouTube videos shows single-video-only alert
-  - Landing-page fetch failure shows network error
+  - Unparseable QR input shows the unplayable-QR alert
+  - Unsupported URL/domain QR shows the unsupported-source alert
+  - Unsupported URL/domain QR sends a best-effort report without blocking the alert flow
   - History replay re-resolves the original landing-page URL and plays the same video

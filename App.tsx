@@ -32,6 +32,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFloatingTabBarMetrics } from "./src/features/floating-tab-bar/floating-tab-bar-context";
 import { ANDROID_FLOATING_TAB_BAR_COMPACT_HEIGHT_THRESHOLD } from "./src/features/floating-tab-bar/floating-tab-bar-constants";
 import { usePlaybackHistory } from "./src/features/playback-history/playback-history-context";
+import { reportUnsupportedQrSource } from "./src/features/player/report-unsupported-qr-source";
 import { usePlaybackInputResolver } from "./src/features/player/use-playback-input-resolver";
 import { AndroidQrScannerView } from "./src/features/scanner/android-qr-scanner-view";
 import {
@@ -336,6 +337,12 @@ function ScannerScreen() {
           status: "failure",
           incrementPlayCount: false,
         });
+        if (result.failureKind === "UNSUPPORTED_SOURCE") {
+          reportUnsupportedQrSource({
+            sourceUrl: result.sourceUrl,
+            finalUrl: result.finalUrl,
+          });
+        }
         showBlockingAlert(result.title, result.message, () => {
           scanLockedRef.current = false;
         });

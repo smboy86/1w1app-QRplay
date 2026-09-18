@@ -2,25 +2,25 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet } from "react-native";
 import { WebView } from "react-native-webview";
 
-import {
-  extractYouTubeId,
-  mapExtractReasonToMessage,
-} from "../../lib/extractYouTubeId";
-import { NETWORK_ERROR_MESSAGE } from "../../lib/mapYouTubeError";
+import { extractYouTubeId } from "../../lib/extractYouTubeId";
 import {
   isSupportedLandingPageHost,
-  mapLandingPageResolveReasonToMessage,
   resolveLandingPageYouTube,
 } from "../../lib/resolveLandingPageYouTube";
 import { resolveFinalUrl } from "../../lib/resolveRedirectUrl";
 
 const REDIRECT_WEBVIEW_TIMEOUT_MS = 9000;
+const UNPLAYABLE_QR_MESSAGE = "재생할 수 없는 QR코드 입니다";
+const UNSUPPORTED_SOURCE_MESSAGE =
+  "현재 앱 내에서 지원하지 않는 QR코드 출처로 확인되었습니다. 매니저에게 해당 내용을 전달하고, 빠르게 지원할 수 있도록 최선을 다하겠습니다. 사용해주셔서 감사합니다";
 
 type RedirectProbeState = {
   key: number;
   sourceUrl: string;
   sourceHost: string | null;
 };
+
+export type PlaybackFailureKind = "UNPLAYABLE_QR" | "UNSUPPORTED_SOURCE";
 
 export type ResolvedPlaybackInputResult =
   | { ok: true; sourceUrl: string; finalUrl: string; videoId: string }
@@ -30,6 +30,7 @@ export type ResolvedPlaybackInputResult =
       finalUrl: string | null;
       title: string;
       message: string;
+      failureKind: PlaybackFailureKind;
     };
 
 // 입력 문자열을 재생 가능한 URL 형태로 정규화한다.
@@ -80,18 +81,24 @@ function getIntentFallbackUrl(raw: string) {
   }
 }
 
-// 랜딩 페이지 파싱 실패를 공통 실패 결과로 변환한다.
-function createLandingPageFailureResult(
+// 해석 실패를 사용자 안내용 실패 결과로 변환한다.
+function createPlaybackFailureResult(
   sourceUrl: string,
-  finalUrl: string,
-  reason: "UNSUPPORTED_HOST" | "INVALID_HTML" | "NOT_FOUND" | "MULTIPLE",
+  finalUrl: string | null,
 ): ResolvedPlaybackInputResult {
+  const hasSourceHost = getHostFromUrl(sourceUrl) !== null;
+  const hasFinalHost = finalUrl ? getHostFromUrl(finalUrl) !== null : false;
+  const isUnsupportedSource = hasSourceHost || hasFinalHost;
+
   return {
     ok: false,
     sourceUrl,
     finalUrl,
-    title: "지원하지 않는 QR",
-    message: mapLandingPageResolveReasonToMessage(reason),
+    title: isUnsupportedSource ? "지원하지 않는 QR" : "재생 오류",
+    message: isUnsupportedSource
+      ? UNSUPPORTED_SOURCE_MESSAGE
+      : UNPLAYABLE_QR_MESSAGE,
+    failureKind: isUnsupportedSource ? "UNSUPPORTED_SOURCE" : "UNPLAYABLE_QR",
   };
 }
 
@@ -108,23 +115,12 @@ async function resolvePlaybackInputInternal(
 
   if (!result.ok && result.reason === "NOT_YOUTUBE") {
     const sourceHost = getHostFromUrl(sourceUrl);
-    let landingPageFailure:
-      | {
-          finalUrl: string;
-          reason: "UNSUPPORTED_HOST" | "INVALID_HTML" | "NOT_FOUND" | "MULTIPLE";
-        }
-      | null = null;
+    let landingPageFailureUrl: string | null = null;
     finalUrl = await resolveFinalUrl(sourceUrl);
     console.log("[PLAYBACK] resolved final URL:", finalUrl);
 
     if (!finalUrl) {
-      return {
-        ok: false,
-        sourceUrl,
-        finalUrl: null,
-        title: "네트워크 오류",
-        message: NETWORK_ERROR_MESSAGE,
-      };
+      return createPlaybackFailureResult(sourceUrl, null);
     }
 
     result = extractYouTubeId(finalUrl);
@@ -146,19 +142,10 @@ async function resolvePlaybackInputInternal(
         }
 
         if (landingPageResult.reason === "NETWORK") {
-          return {
-            ok: false,
-            sourceUrl,
-            finalUrl,
-            title: "네트워크 오류",
-            message: NETWORK_ERROR_MESSAGE,
-          };
+          return createPlaybackFailureResult(sourceUrl, finalUrl);
         }
 
-        landingPageFailure = {
-          finalUrl,
-          reason: landingPageResult.reason,
-        };
+        landingPageFailureUrl = finalUrl;
       }
 
       const shouldUseWebViewFallback =
@@ -175,24 +162,14 @@ async function resolvePlaybackInputInternal(
         }
       }
 
-      if (!result.ok && landingPageFailure) {
-        return createLandingPageFailureResult(
-          sourceUrl,
-          landingPageFailure.finalUrl,
-          landingPageFailure.reason,
-        );
+      if (!result.ok && landingPageFailureUrl) {
+        return createPlaybackFailureResult(sourceUrl, landingPageFailureUrl);
       }
     }
   }
 
   if (!result.ok) {
-    return {
-      ok: false,
-      sourceUrl,
-      finalUrl,
-      title: "지원하지 않는 QR",
-      message: mapExtractReasonToMessage(result.reason),
-    };
+    return createPlaybackFailureResult(sourceUrl, finalUrl);
   }
 
   return {
