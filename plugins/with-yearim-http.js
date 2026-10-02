@@ -23,7 +23,7 @@ function withYearimHttp(config) {
 <network-security-config>
   <base-config cleartextTrafficPermitted="false" />
   <domain-config cleartextTrafficPermitted="true">
-    <domain>media.yearim.kr</domain>
+    <domain includeSubdomains="false">media.yearim.kr</domain>
   </domain-config>
 </network-security-config>
 `,
