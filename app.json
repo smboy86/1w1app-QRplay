@@ -3,7 +3,7 @@
     "name": "QRPlay",
     "slug": "qrplay",
     "scheme": "qrplay",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "orientation": "landscape",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -42,6 +42,7 @@
       ],
       "expo-router",
       "./plugins/with-android16-orientation-compat",
+      "./plugins/with-yearim-http",
       "expo-font",
       "expo-status-bar"
     ],
