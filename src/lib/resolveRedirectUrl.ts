@@ -38,7 +38,15 @@ async function fetchWithTimeout(
   }
 }
 
+// 서버의 HTTPS 지원 여부에 맞춰 리다이렉트 확인 주소를 구성한다.
 function buildResolveCandidates(url: URL): string[] {
+  // 예림 미디어 서버는 HTTP에서만 유튜브 이동을 제공한다.
+  if (url.hostname.toLowerCase() === "media.yearim.kr") {
+    const httpUrl = new URL(url.toString());
+    httpUrl.protocol = "http:";
+    return [httpUrl.toString()];
+  }
+
   if (url.protocol !== "http:") {
     return [url.toString()];
   }

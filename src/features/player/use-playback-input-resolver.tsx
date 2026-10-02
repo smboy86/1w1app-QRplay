@@ -116,12 +116,8 @@ async function resolvePlaybackInputInternal(
   if (!result.ok && result.reason === "NOT_YOUTUBE") {
     const sourceHost = getHostFromUrl(sourceUrl);
     let landingPageFailureUrl: string | null = null;
-    finalUrl = await resolveFinalUrl(sourceUrl);
+    finalUrl = (await resolveFinalUrl(sourceUrl)) ?? sourceUrl;
     console.log("[PLAYBACK] resolved final URL:", finalUrl);
-
-    if (!finalUrl) {
-      return createPlaybackFailureResult(sourceUrl, null);
-    }
 
     result = extractYouTubeId(finalUrl);
 
