@@ -28,7 +28,8 @@ export function WelcomeSplash({ onComplete }: { onComplete: () => void }) {
           Animated.timing(welcome, { toValue: 1, duration: 650, useNativeDriver: true }),
         ]),
       ]),
-      Animated.delay(300),
+      // 캐릭터 움직임 1.6초 + 문구 유지 1.65초 + 퇴장 0.25초로 총 3.5초를 표시한다.
+      Animated.delay(1650),
       Animated.timing(opacity, { toValue: 0, duration: 250, useNativeDriver: true }),
     ]);
     animation.start(({ finished }) => { if (finished) onComplete(); });
