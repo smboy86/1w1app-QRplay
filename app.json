@@ -3,9 +3,9 @@
     "name": "QRPlay",
     "slug": "qrplay",
     "scheme": "qrplay",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "orientation": "landscape",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/icon-full.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
@@ -19,7 +19,7 @@
         "CAMERA",
         "android.permission.CAMERA"
       ],
-      "icon": "./assets/icon.png",
+      "icon": "./assets/icon-full.png",
       "predictiveBackGestureEnabled": false,
       "package": "com.naldaworks.qrplay"
     },
@@ -27,9 +27,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#E6F4FE",
-          "image": "./assets/splash-icon.png",
-          "imageWidth": 220
+          "backgroundColor": "#D9EAFB",
+          "image": "./assets/welcome-mascot.png",
+          "imageWidth": 180
         }
       ],
       [

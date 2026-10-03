@@ -26,7 +26,6 @@ import {
   type BarcodeScanningResult,
   useCameraPermissions,
 } from "expo-camera";
-import * as SplashScreen from "expo-splash-screen";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useFloatingTabBarMetrics } from "./src/features/floating-tab-bar/floating-tab-bar-context";
@@ -57,16 +56,11 @@ import {
   getDefaultScannerFacing,
 } from "./src/features/settings/default-camera-storage";
 
-const INITIAL_SPLASH_DELAY_MS = 3000;
 const FRONT_CAMERA_IDLE_SUGGESTION_DELAY_MS = 2500;
 const SCAN_HIGHLIGHT_VISIBLE_MS = 750;
 const IS_ANDROID_NATIVE_SCANNER =
   process.env.EXPO_OS === "android" &&
   process.env.EXPO_PUBLIC_ENABLE_ANDROID_NATIVE_SCANNER === "1";
-
-void SplashScreen.preventAutoHideAsync().catch(() => {
-  // 빠른 새로고침 중 중복 방지 요청은 무시한다.
-});
 
 // 안드로이드가 아닐 때 대체 미리보기에 사용할 expo-camera 확대 비율을 근사 계산한다.
 function getExpoFallbackZoom(zoomLevel: number) {
@@ -257,16 +251,6 @@ function ScannerScreen() {
     },
     [],
   );
-
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      void SplashScreen.hideAsync().catch(() => {
-        // 스플래시 화면이 이미 내려간 경우 숨김 오류는 무시한다.
-      });
-    }, INITIAL_SPLASH_DELAY_MS);
-
-    return () => clearTimeout(timeout);
-  }, []);
 
   useEffect(() => {
     if (

@@ -1,5 +1,8 @@
 import * as SplashScreen from "expo-splash-screen";
 import { Stack } from "expo-router";
+import { useState } from "react";
+
+import { WelcomeSplash } from "../src/features/welcome/welcome-splash";
 
 import { PlaybackHistoryProvider } from "../src/features/playback-history/playback-history-context";
 import { PlaybackReturnSettingProvider } from "../src/features/settings/playback-return-setting-context";
@@ -10,6 +13,12 @@ void SplashScreen.preventAutoHideAsync().catch(() => {
 
 // 네이티브 탭 내비게이터를 담는 루트 스택을 렌더링한다.
 export default function RootLayout() {
+  const [welcomeComplete, setWelcomeComplete] = useState(false);
+
+  if (!welcomeComplete) {
+    return <WelcomeSplash onComplete={() => setWelcomeComplete(true)} />;
+  }
+
   return (
     <PlaybackReturnSettingProvider>
       <PlaybackHistoryProvider>
